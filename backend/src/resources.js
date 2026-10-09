@@ -1,0 +1,196 @@
+export const LOW_STOCK = 25;
+export const bad = (message, status = 400) => Object.assign(new Error(message), { status });
+
+export function clean(schema, body = {}, partial = false) {
+  const out = {};
+  for (const [key, s] of Object.entries(schema)) {
+    const name = s.label || key;
+    let v = body[key];
+    if (v === undefined) {
+      if (!partial) {
+        if (s.required) throw bad(`${name} is required`);
+        if ('default' in s) out[key] = s.default;
+      }
+      continue;
+    }
+    if (v === '' || v === null) {
+      if (s.required) throw bad(`${name} is required`);
+      out[key] = s.nullable ? null : s.type === 'number' ? s.default ?? 0 : '';
+      continue;
+    }
+    if (s.type === 'number') {
+      v = Number(v);
+      if (!Number.isFinite(v)) throw bad(`${name} must be a number`);
+      if (s.min !== undefined && v < s.min) throw bad(`${name} must be at least ${s.min}`);
+      if (s.int) v = Math.round(v);
+    } else if (s.type === 'boolean') v = v === true || v === 'true';
+    else {
+      v = String(v).trim();
+      if (s.enum && !s.enum.includes(v)) throw bad(`Invalid ${name}`);
+    }
+    out[key] = v;
+  }
+  return out;
+}
+
+const now = () => new Date().toISOString();
+const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
+const nextId = (rows, prefix, start) => `${prefix}-${Math.max(start, ...rows.map((r) => Number(String(r.id).replace(/\D/g, '')) || 0)) + 1}`;
+const sumBy = (rows, fn) => rows.reduce((a, r) => a + fn(r), 0);
+
+async function bookSale(db, order, sign) {
+  if (order.status === 'Cancelled') return;
+  const meta = await db.getMeta();
+  meta.mix[order.type === 'Retail' ? 'retail' : 'wholesale'] += sign * order.amount;
+  if (isToday(order.createdAt)) meta.series[meta.series.length - 1] += sign * order.amount;
+  await db.setMeta(meta);
+}
+
+async function moveStock(db, product, delta, movement) {
+  const stock = product.stock + delta;
+  if (stock < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
+  await db.update('products', product.id, { stock });
+  return db.create('inventory', { productId: product.id, productName: product.name, sku: product.sku, balance: stock, createdAt: now(), ...movement });
+}
+
+async function receivePurchase(db, po) {
+  const product = await db.get('products', po.productId);
+  if (product) await moveStock(db, product, po.quantity, { type: 'Stock in', quantity: po.quantity, note: `Received against ${po.id}` });
+}
+
+async function withTotals(db, rows, field) {
+  const orders = await db.list('orders');
+  return rows.map((r) => {
+    const mine = orders.filter((o) => o.customer.toLowerCase() === r.name.toLowerCase() && o.status !== 'Cancelled');
+    return { ...r, orders: mine.length, totalSpent: sumBy(mine, (o) => o.amount) };
+  });
+}
+
+const PREFIX = { 'Bhajani Chakli': 'BHA', Chivda: 'CHI', Namkeen: 'NAM', Farsan: 'FAR', Sweets: 'SWE', Papad: 'PAP' };
+
+export const resources = {
+  orders: {
+    entity: 'Order',
+    label: (r) => `${r.id} for ${r.customer}`,
+    schema: {
+      customer: { required: true, label: 'Customer' },
+      type: { required: true, enum: ['Retail', 'Wholesale'], label: 'Type' },
+      amount: { type: 'number', required: true, min: 0, label: 'Amount' },
+      status: { enum: ['Pending', 'Processing', 'Dispatched', 'Delivered', 'Cancelled'], default: 'Pending', label: 'Status' },
+      note: { label: 'Note' },
+    },
+    async prepare(db, d) { return { ...d, id: nextId(await db.list('orders'), 'TMF', 1000), createdAt: now() }; },
+    afterCreate: (db, row) => bookSale(db, row, 1),
+    async afterUpdate(db, before, after) { await bookSale(db, before, -1); await bookSale(db, after, 1); },
+    afterDelete: (db, row) => bookSale(db, row, -1),
+  },
+
+  products: {
+    entity: 'Product',
+    label: (r) => r.name,
+    schema: {
+      name: { required: true, label: 'Name' },
+      category: { required: true, label: 'Category' },
+      mrp: { type: 'number', nullable: true, min: 0, label: 'MRP' },
+      retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
+      wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
+      stock: { type: 'number', int: true, min: 0, default: 0, label: 'Stock' },
+      active: { type: 'boolean', default: true, label: 'State' },
+    },
+    async prepare(db, d) {
+      const rows = await db.list('products');
+      const prefix = PREFIX[d.category] || d.category.slice(0, 3).toUpperCase();
+      const n = rows.filter((r) => r.category === d.category).length + 1;
+      return { mrp: null, retailPrice: null, wholesalePrice: null, ...d, sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: now() };
+    },
+  },
+
+  inventory: {
+    entity: 'Inventory',
+    immutable: true,
+    label: (r) => `${r.type} ${r.quantity} x ${r.productName}`,
+    schema: {
+      productId: { required: true, label: 'Product' },
+      type: { required: true, enum: ['Stock in', 'Stock out', 'Adjustment'], label: 'Type' },
+      quantity: { type: 'number', int: true, required: true, label: 'Quantity' },
+      note: { label: 'Note' },
+    },
+    async prepare(db, d) {
+      const product = await db.get('products', d.productId);
+      if (!product) throw bad('Product not found');
+      if (d.quantity === 0) throw bad('Quantity cannot be 0');
+      if (d.type !== 'Adjustment' && d.quantity < 0) throw bad('Quantity must be greater than 0');
+      const delta = d.type === 'Stock out' ? -d.quantity : d.quantity;
+      if (product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
+      await db.update('products', product.id, { stock: product.stock + delta });
+      return { ...d, productName: product.name, sku: product.sku, balance: product.stock + delta, createdAt: now() };
+    },
+  },
+
+  purchases: {
+    entity: 'Purchase',
+    label: (r) => `${r.id} from ${r.supplier}`,
+    schema: {
+      supplier: { required: true, label: 'Supplier' },
+      productId: { required: true, label: 'Product' },
+      quantity: { type: 'number', int: true, required: true, min: 1, label: 'Quantity' },
+      unitCost: { type: 'number', required: true, min: 0, label: 'Unit cost' },
+      status: { enum: ['Ordered', 'Received', 'Cancelled'], default: 'Ordered', label: 'Status' },
+      notes: { label: 'Notes' },
+    },
+    async prepare(db, d) {
+      const product = await db.get('products', d.productId);
+      if (!product) throw bad('Product not found');
+      return { ...d, id: nextId(await db.list('purchases'), 'PO', 3020), productName: product.name, amount: d.quantity * d.unitCost, createdAt: now() };
+    },
+    async afterCreate(db, row) { if (row.status === 'Received') await receivePurchase(db, row); },
+    async beforeUpdate(db, existing, patch) {
+      if (existing.status === 'Received') throw bad('Received purchases are locked');
+      const next = { ...patch };
+      if (patch.productId) {
+        const product = await db.get('products', patch.productId);
+        if (!product) throw bad('Product not found');
+        next.productName = product.name;
+      }
+      next.amount = (patch.quantity ?? existing.quantity) * (patch.unitCost ?? existing.unitCost);
+      return next;
+    },
+    async afterUpdate(db, before, after) { if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(db, after); },
+  },
+
+  suppliers: {
+    entity: 'Supplier',
+    label: (r) => r.name,
+    schema: {
+      name: { required: true, label: 'Name' }, contact: { label: 'Contact' }, phone: { label: 'Phone' }, email: { label: 'Email' },
+      city: { label: 'City' }, supplies: { label: 'Supplies' }, status: { enum: ['Active', 'Inactive'], default: 'Active', label: 'Status' },
+    },
+    async enrich(db, rows) {
+      const purchases = await db.list('purchases');
+      return rows.map((r) => {
+        const mine = purchases.filter((p) => p.supplier === r.name && p.status !== 'Cancelled');
+        return { ...r, purchases: mine.length, totalPurchased: sumBy(mine, (p) => p.amount) };
+      });
+    },
+  },
+
+  customers: {
+    entity: 'Customer',
+    label: (r) => r.name,
+    schema: { name: { required: true, label: 'Name' }, phone: { label: 'Phone' }, email: { label: 'Email' }, city: { label: 'City' } },
+    enrich: (db, rows) => withTotals(db, rows),
+  },
+
+  wholesalers: {
+    entity: 'Wholesaler',
+    label: (r) => r.name,
+    schema: {
+      name: { required: true, label: 'Business name' }, contact: { label: 'Contact' }, phone: { label: 'Phone' }, city: { label: 'City' }, gstin: { label: 'GSTIN' },
+      creditLimit: { type: 'number', min: 0, default: 0, label: 'Credit limit' }, outstanding: { type: 'number', min: 0, default: 0, label: 'Outstanding' },
+      status: { enum: ['Active', 'On hold'], default: 'Active', label: 'Status' },
+    },
+    enrich: (db, rows) => withTotals(db, rows),
+  },
+
+  'audit-logs': { readOnly: true, schema: {} },
+};

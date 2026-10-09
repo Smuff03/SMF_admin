@@ -1,0 +1,115 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { api } from '../api.js';
+import { useApp } from '../context.jsx';
+import Icon from '../components/Icon.jsx';
+import DataTable from '../components/DataTable.jsx';
+import { AreaChart, Donut } from '../components/Charts.jsx';
+import { Badge, Button, EmptyState, PageHeader, Tile } from '../components/ui.jsx';
+import { compact, downloadCsv, greeting, initial, inr, when } from '../utils.js';
+
+const delta = (v, label) => <small className={v >= 0 ? 'up' : 'down'}>{v >= 0 ? '↑' : '↓'} {Math.abs(v)}% {label}</small>;
+
+const orderCols = [
+  { label: 'Order', render: (r) => <b>#{r.id}</b> },
+  { label: 'Customer', key: 'customer' },
+  { label: 'Type', render: (r) => <Badge>{r.type}</Badge> },
+  { label: 'Amount', render: (r) => <b>{inr(r.amount)}</b> },
+  { label: 'Status', render: (r) => <Badge>{r.status}</Badge> },
+  { label: 'When', render: (r) => <span className="muted">{when(r.createdAt)}</span> },
+];
+
+export default function Dashboard() {
+  const { setConnOpen, summary } = useApp();
+  const [d, setD] = useState(null);
+  const [error, setError] = useState('');
+  const [range, setRange] = useState(30);
+
+  useEffect(() => {
+    api.get('/dashboard').then(setD).catch((e) => setError(e.message));
+  }, [summary]);
+
+  if (error) {
+    return <EmptyState title="Dashboard unavailable" text={`${error}. Make sure the API is running, then check the connection settings.`}
+      action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;
+  }
+  if (!d) return <div className="loading">Loading dashboard…</div>;
+
+  const { kpis: k, mix } = d;
+  const data = d.series.slice(-range);
+  const labels = data.map((_, i) => String(i + 1).padStart(2, '0'));
+  const total = mix.retail + mix.wholesale;
+  const retailPct = Math.round((mix.retail / total) * 100);
+  const exportReport = () => downloadCsv('tmf-dashboard-report.csv', [
+    ['Today\'s sales', k.todaySales], ['Monthly sales', k.monthSales], ['Total orders', k.totalOrders], ['Orders this week', k.weekOrders],
+    ['Pending orders', k.pendingOrders], ['Retail sales', mix.retail], ['Wholesale sales', mix.wholesale],
+  ].map(([metric, value]) => ({ metric, value })));
+
+  const cards = [
+    ['Today\'s sales', inr(k.todaySales), delta(k.todayChange, 'vs yesterday'), 'rupee', 'green'],
+    ['Monthly sales', inr(k.monthSales), delta(k.monthChange, 'vs last month'), 'rupee', 'blue'],
+    ['Total orders', k.totalOrders, <small className="up">{k.weekOrders} orders this week</small>, 'cart', 'orange'],
+    ['Pending orders', k.pendingOrders, <small className="up">Needs attention</small>, 'file', 'red'],
+  ];
+
+  return (
+    <>
+      <PageHeader eyebrow={`OVERVIEW / ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()}`}
+        title={`${greeting()}, Admin`} subtitle="Here’s the health of your snacks business today."
+        action={<Button icon="download" onClick={exportReport}>Export report</Button>} />
+
+      <div className="kpis">
+        {cards.map(([label, value, note, icon, tone]) => (
+          <div key={label} className="card kpi">
+            <span className={`kicon t-${tone}`}><Icon name={icon} size={20} /></span>
+            <div><span className="muted">{label}</span><b className="kv">{value}</b>{note}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid2 mb">
+        <section className="card pad">
+          <div className="card-h flat">
+            <div><h2>Sales overview</h2><p className="sub">Revenue performance {range === 30 ? 'this month' : `over the last ${range} days`}</p></div>
+            <select className="sel" value={range} onChange={(e) => setRange(Number(e.target.value))} aria-label="Date range">
+              <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
+            </select>
+          </div>
+          <div className="legend-row"><span><i className="dot-g" /> Total sales</span><b>{compact(data.reduce((a, b) => a + b, 0))}</b></div>
+          <AreaChart data={data} labels={labels} />
+        </section>
+
+        <section className="card pad">
+          <div className="card-h flat">
+            <div><h2>Sales mix</h2><p className="sub">By customer type</p></div>
+            <Icon name="help" size={22} />
+          </div>
+          <div className="donut-wrap">
+            <Donut parts={[{ label: 'Retail', value: mix.retail, color: '#22c55e' }, { label: 'Wholesale', value: mix.wholesale, color: '#cbd5e1' }]}>
+              <b>{compact(total)}</b><small className="muted">Total sales</small>
+            </Donut>
+          </div>
+          <div className="mix-row"><span><i className="dot-g" /> Retail sales</span><b>{retailPct}%</b></div>
+          <div className="mix-row"><span><i className="dot-s" /> Wholesale sales</span><b>{100 - retailPct}%</b></div>
+        </section>
+      </div>
+
+      <div className="grid2 mb">
+        <section className="card">
+          <div className="card-h"><div><h2>Recent orders</h2><p className="sub">Your latest customer activity</p></div><Link className="link" to="/orders">View all <Icon name="arrow" size={16} /></Link></div>
+          <DataTable columns={orderCols} rows={d.recentOrders} />
+        </section>
+        <section className="card">
+          <div className="card-h"><div><h2>Low stock</h2><p className="sub">Products that need replenishing</p></div><Link className="link" to="/inventory">View inventory <Icon name="arrow" size={16} /></Link></div>
+          {d.lowStock.length ? d.lowStock.map((p) => (
+            <div key={p.id} className="stock-row">
+              <Tile>{initial(p.name)}</Tile>
+              <div className="grow"><b>{p.name}</b><small className="muted block">{p.category}</small><div className="bar"><i style={{ width: `${Math.min(100, (p.stock / 50) * 100)}%` }} /></div></div>
+              <span className="low">{p.stock} left</span>
+            </div>
+          )) : <p className="sub pad">Everything is well stocked.</p>}
+        </section>
+      </div>
+    </>
+  );
+}

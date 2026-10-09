@@ -1,0 +1,20 @@
+{
+  "name": "tmf-bizhub-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "firebase-admin": "^12.7.0",
+    "tmf-bizhub": "file:.."
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
