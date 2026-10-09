@@ -1,20 +1,27 @@
-const base = import.meta.env.VITE_API_URL || '/api';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase.js';
 
-async function request(path, { method = 'GET', body } = {}) {
-  const res = await fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 204) return null;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
+/**
+ * All writes go through the `adminMutate` Cloud Function, which re-checks the admin claim and applies
+ * the business rules (stock, sequential ids, audit log) atomically. Reads are live in context.jsx.
+ */
+const friendly = (e) => {
+  if (e?.code === 'functions/unavailable') return 'Cannot reach Firebase. Check your internet connection and try again.';
+  if (e?.code === 'functions/not-found' && e.message === 'NOT_FOUND') return 'The adminMutate Cloud Function is not deployed yet. See the README.';
+  if (e?.code === 'functions/unauthenticated') return 'Your session has expired. Please sign in again.';
+  return e?.message || 'Something went wrong';
+};
+
+async function send(payload) {
+  try {
+    return (await httpsCallable(functions, 'adminMutate')(payload)).data;
+  } catch (e) {
+    throw new Error(friendly(e));
+  }
 }
 
 export const api = {
-  get: (p) => request(p),
-  post: (p, body) => request(p, { method: 'POST', body }),
-  put: (p, body) => request(p, { method: 'PUT', body }),
-  del: (p) => request(p, { method: 'DELETE' }),
+  create: (resource, data) => send({ resource, action: 'create', data }),
+  update: (resource, id, data) => send({ resource, action: 'update', id, data }),
+  remove: (resource, id) => send({ resource, action: 'delete', id }),
 };

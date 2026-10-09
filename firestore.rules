@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    // Role comes from a custom claim set ONLY by Cloud Functions / admin script.
+    function role() { return signedIn() ? request.auth.token.get('role', 'customer') : 'none'; }
+    function isAdmin() { return role() == 'admin'; }
+    function isWholesaler() { return role() == 'wholesaler'; }
+
+    function validProduct() {
+      let d = request.resource.data;
+      return d.name is string && d.name.size() > 0
+        && d.category is string
+        && d.mrp is number && d.retailPrice is number && d.retailPrice >= 0
+        && d.active is bool
+        // wholesale data must never live in the public product doc
+        && !('wholesalePrice' in d) && !('moq' in d);
+    }
+
+    // PUBLIC catalogue: no wholesale fields. stockQty is changed only by Cloud Functions.
+    match /products/{id} {
+      allow read: if resource.data.active == true || isAdmin();
+      allow create: if isAdmin() && request.resource.data.stockQty == 0 && validProduct();
+      allow update: if isAdmin() && request.resource.data.stockQty == resource.data.stockQty && validProduct();
+      allow delete: if false;
+    }
+
+    // PRIVATE wholesale pricing: approved wholesalers + admins only.
+    match /productPricing/{id} {
+      allow read: if isWholesaler() || isAdmin();
+      allow write: if isAdmin()
+        && request.resource.data.wholesalePrice is number
+        && request.resource.data.moq is int && request.resource.data.moq >= 1;
+    }
+
+    // Users cannot write role / wholesaleStatus / wholesaleApplication (functions only).
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'createdAt', 'updatedAt']);
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'addresses', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Orders are created/changed only by Cloud Functions (server-side pricing + stock checks).
+    match /orders/{orderId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
+    match /inventoryMovements/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // TMF BizHub admin panel. Appended: every rule above is unchanged, so the storefront keeps working.
+    // Admins (custom claim role == 'admin') may READ these collections for live dashboards.
+    // Nobody can write from a client: the `adminMutate` Cloud Function (Admin SDK) applies all changes,
+    // re-checking the claim and keeping stock, ids and the audit log consistent.
+    // adminOrders / adminProducts are separate from the storefront's orders / products on purpose.
+    // ------------------------------------------------------------------------------------------
+    match /adminOrders/{id}      { allow read: if isAdmin(); allow write: if false; }
+    match /adminProducts/{id}    { allow read: if isAdmin(); allow write: if false; }
+    match /inventory/{id}        { allow read: if isAdmin(); allow write: if false; }
+    match /purchases/{id}        { allow read: if isAdmin(); allow write: if false; }
+    match /suppliers/{id}        { allow read: if isAdmin(); allow write: if false; }
+    match /customers/{id}        { allow read: if isAdmin(); allow write: if false; }
+    match /wholesalers/{id}      { allow read: if isAdmin(); allow write: if false; }
+    match /audit-logs/{id}       { allow read: if isAdmin(); allow write: if false; }
+    match /meta/{id}             { allow read: if isAdmin(); allow write: if false; }
+  }
+}

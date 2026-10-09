@@ -1,3 +1,4 @@
+export const LOW_STOCK = 25;
 export const CATEGORIES = ['Bhajani Chakli', 'Chivda', 'Namkeen', 'Farsan', 'Sweets', 'Papad'];
 export const ORDER_STATUS = ['Pending', 'Processing', 'Dispatched', 'Delivered', 'Cancelled'];
 export const PO_STATUS = ['Ordered', 'Received', 'Cancelled'];

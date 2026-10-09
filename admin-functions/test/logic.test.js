@@ -1,0 +1,137 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Fail, perform } from '../src/logic.js';
+
+/** In-memory store mimicking the adapter in index.js: reads see pre-op state, writes apply on commit. */
+function store() {
+  const data = {};
+  let n = 0;
+  const col = (r) => (data[r] ||= {});
+  const run = async (req, actor = 'admin@test') => {
+    const writes = [];
+    const tx = {
+      get: async (r, id) => (col(r)[id] ? structuredClone(col(r)[id]) : null),
+      set: (r, id, doc) => writes.push(() => { col(r)[id] = structuredClone(doc); }),
+      update: (r, id, patch) => writes.push(() => { col(r)[id] = { ...col(r)[id], ...structuredClone(patch) }; }),
+      delete: (r, id) => writes.push(() => { delete col(r)[id]; }),
+      newId: () => `auto${++n}`,
+    };
+    const out = await perform({ tx, actor, now: '2026-10-10T10:00:00.000Z' }, req);
+    writes.forEach((w) => w());
+    return out;
+  };
+  return { data, run, col };
+}
+const product = (over = {}) => ({ resource: 'products', action: 'create', data: { name: 'Poha Chivda', category: 'Chivda', stock: 30, ...over } });
+
+test('order ids are sequential and each write is audited with the actor', async () => {
+  const s = store();
+  const a = await s.run({ resource: 'orders', action: 'create', data: { customer: 'Rohan', type: 'Retail', amount: '500' } });
+  const b = await s.run({ resource: 'orders', action: 'create', data: { customer: 'Maya', type: 'Wholesale', amount: 900 } });
+  assert.deepEqual([a.id, b.id], ['TMF-1001', 'TMF-1002']);
+  assert.equal(s.data.adminOrders, undefined); // logical names only; path mapping lives in index.js
+  assert.equal(s.col('orders')['TMF-1001'].status, 'Pending');
+  const logs = Object.values(s.col('audit-logs'));
+  assert.equal(logs.length, 2);
+  assert.equal(logs[0].user, 'admin@test');
+  assert.equal(logs[0].detail, 'TMF-1001 for Rohan');
+});
+
+test('validation rejects bad input and writes nothing', async () => {
+  const s = store();
+  await assert.rejects(s.run({ resource: 'orders', action: 'create', data: { customer: '', type: 'Retail', amount: 1 } }), /Customer is required/);
+  await assert.rejects(s.run({ resource: 'orders', action: 'create', data: { customer: 'x', type: 'Bogus', amount: 1 } }), /Invalid Type/);
+  await assert.rejects(s.run({ resource: 'orders', action: 'create', data: { customer: 'x', type: 'Retail', amount: -5 } }), /at least 0/);
+  await assert.rejects(s.run({ resource: 'orders', action: 'create', data: { customer: 'x', type: 'Retail', amount: 'abc' } }), /must be a number/);
+  await assert.rejects(s.run({ resource: 'nope', action: 'create', data: {} }), Fail);
+  await assert.rejects(s.run({ resource: 'audit-logs', action: 'create', data: {} }), /Unknown resource/);
+  assert.equal(Object.keys(s.data).length, 0);
+});
+
+test('product SKUs count per category prefix', async () => {
+  const s = store();
+  await s.run(product());
+  await s.run(product({ name: 'Makai Chivda' }));
+  await s.run(product({ name: 'Ratlami Sev', category: 'Namkeen' }));
+  const skus = Object.values(s.col('products')).map((p) => p.sku).sort();
+  assert.deepEqual(skus, ['TMF-CHI-001', 'TMF-CHI-002', 'TMF-NAM-001']);
+  const p = Object.values(s.col('products'))[0];
+  assert.equal(p.mrp, null);
+});
+
+test('inventory moves stock, records balance and rejects overdrawing', async () => {
+  const s = store();
+  const { id } = await s.run(product());
+  await s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock in', quantity: 10 } });
+  assert.equal(s.col('products')[id].stock, 40);
+  await s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock out', quantity: 15 } });
+  assert.equal(s.col('products')[id].stock, 25);
+  await s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Adjustment', quantity: -5 } });
+  assert.equal(s.col('products')[id].stock, 20);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock out', quantity: 21 } }), /Only 20 units/);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock in', quantity: -1 } }), /greater than 0/);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock in', quantity: 0 } }), /cannot be 0/);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: 'ghost', type: 'Stock in', quantity: 1 } }), /Product not found/);
+  assert.equal(s.col('products')[id].stock, 20);
+  const bal = Object.values(s.col('inventory')).map((m) => m.balance).sort((a, b) => b - a);
+  assert.deepEqual(bal, [40, 25, 20]);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'update', id: Object.keys(s.col('inventory'))[0], data: {} }), /cannot be edited/);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'delete', id: Object.keys(s.col('inventory'))[0] }), /cannot be deleted/);
+});
+
+test('receiving a purchase adds stock once and locks the purchase', async () => {
+  const s = store();
+  const { id: pid } = await s.run(product());
+  const { id: po } = await s.run({ resource: 'purchases', action: 'create', data: { supplier: 'Shivam', productId: pid, quantity: 100, unitCost: 38 } });
+  assert.equal(po, 'PO-3021');
+  assert.equal(s.col('purchases')[po].amount, 3800);
+  assert.equal(s.col('products')[pid].stock, 30);
+
+  await s.run({ resource: 'purchases', action: 'update', id: po, data: { quantity: 120 } });
+  assert.equal(s.col('purchases')[po].amount, 4560);
+
+  await s.run({ resource: 'purchases', action: 'update', id: po, data: { status: 'Received' } });
+  assert.equal(s.col('products')[pid].stock, 150);
+  const moves = Object.values(s.col('inventory'));
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].note, 'Received against PO-3021');
+
+  await assert.rejects(s.run({ resource: 'purchases', action: 'update', id: po, data: { status: 'Cancelled' } }), /locked/);
+  assert.equal(s.col('products')[pid].stock, 150);
+});
+
+test('a purchase created as Received adds stock immediately', async () => {
+  const s = store();
+  const { id: pid } = await s.run(product({ stock: 0 }));
+  await s.run({ resource: 'purchases', action: 'create', data: { supplier: 'Om', productId: pid, quantity: 50, unitCost: 4, status: 'Received' } });
+  assert.equal(s.col('products')[pid].stock, 50);
+});
+
+test('update and delete require an existing record; delete is audited', async () => {
+  const s = store();
+  await assert.rejects(s.run({ resource: 'customers', action: 'update', id: 'zzz', data: { name: 'A' } }), (e) => e.code === 'not-found');
+  await assert.rejects(s.run({ resource: 'customers', action: 'delete', id: 'a/b' }), /valid record id/);
+  const { id } = await s.run({ resource: 'customers', action: 'create', data: { name: 'Neha', city: 'Pune' } });
+  await s.run({ resource: 'customers', action: 'update', id, data: { city: 'Mumbai' } });
+  assert.equal(s.col('customers')[id].city, 'Mumbai');
+  assert.equal(s.col('customers')[id].name, 'Neha');
+  await s.run({ resource: 'customers', action: 'delete', id });
+  assert.equal(s.col('customers')[id], undefined);
+  assert.deepEqual(Object.values(s.col('audit-logs')).map((l) => l.action), ['Created', 'Updated', 'Deleted']);
+});
+
+test('order status can be changed and the id/createdAt cannot be overwritten', async () => {
+  const s = store();
+  const { id } = await s.run({ resource: 'orders', action: 'create', data: { customer: 'A', type: 'Retail', amount: 10 } });
+  await s.run({ resource: 'orders', action: 'update', id, data: { status: 'Cancelled', id: 'HACK', createdAt: '1999' } });
+  assert.equal(s.col('orders')[id].status, 'Cancelled');
+  assert.equal(s.col('orders')[id].id, id);
+  assert.equal(s.col('orders')[id].createdAt, '2026-10-10T10:00:00.000Z');
+});
+
+test('every new record gets a createdAt for newest-first ordering', async () => {
+  const s = store();
+  const { id } = await s.run({ resource: 'suppliers', action: 'create', data: { name: 'Om Packaging' } });
+  assert.equal(s.col('suppliers')[id].createdAt, '2026-10-10T10:00:00.000Z');
+  assert.equal(s.col('suppliers')[id].status, 'Active');
+});

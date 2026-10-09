@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { useMemo, useState } from 'react';
+import { reports } from '../analytics.js';
 import { useApp } from '../context.jsx';
 import DataTable from '../components/DataTable.jsx';
 import { BarChart, HBars } from '../components/Charts.jsx';
@@ -14,25 +14,23 @@ const topCols = [
 ];
 
 export default function Reports() {
-  const { setConnOpen, toast } = useApp();
+  const { setConnOpen, toast, data, errors } = useApp();
   const [days, setDays] = useState(30);
-  const [r, setR] = useState(null);
-  const [error, setError] = useState('');
+  const error = errors.orders || errors.products || '';
+  const r = useMemo(() => (data.orders && data.products ? reports(data.orders, data.products, days) : null), [data.orders, data.products, days]);
 
-  useEffect(() => { api.get(`/reports?days=${days}`).then(setR).catch((e) => setError(e.message)); }, [days]);
-
-  const exportData = async (kind) => {
-    try {
-      const rows = await api.get(`/${kind}`);
-      downloadCsv(`tmf-${kind}.csv`, rows.map(({ id, ...rest }) => ({ id, ...rest })));
-    } catch (e) { toast(e.message, 'err'); }
+  const exportData = (kind) => {
+    const rows = data[kind];
+    if (!rows) return toast('Still loading, try again in a moment', 'err');
+    if (!rows.length) return toast(`No ${kind} to export yet`, 'err');
+    downloadCsv(`tmf-${kind}.csv`, rows.map(({ id, ...rest }) => ({ id, ...rest })));
   };
 
-  if (error) return <EmptyState title="Reports unavailable" text={`${error}. Make sure the API is running, then check the connection settings.`} action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;
+  if (error) return <EmptyState title="Reports unavailable" text={`${error}. Check the connection settings.`} action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;
   if (!r) return <div className="loading">Loading reports…</div>;
 
   const k = r.kpis;
-  const cards = [['Revenue', compact(k.revenue), `Last ${r.days} days`], ['Orders', k.orders, 'Placed in this period'], ['Average order', inr(k.avgOrderValue), 'Per order value'], ['Wholesale share', `${k.wholesaleShare}%`, 'Of this month’s sales']];
+  const cards = [['Revenue', compact(k.revenue), `Last ${r.days} days`], ['Orders', k.orders, 'Placed in this period'], ['Average order', inr(k.avgOrderValue), 'Per order value'], ['Wholesale share', `${k.wholesaleShare}%`, 'Of revenue in this period']];
 
   return (
     <>

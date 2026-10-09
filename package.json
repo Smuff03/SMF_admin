@@ -1,18 +1,18 @@
 {
   "name": "tmf-bizhub",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
-    "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend run dev",
+    "postinstall": "npm --prefix admin-functions install && npm --prefix frontend install",
+    "dev": "npm --prefix frontend run dev",
+    "emulators": "firebase emulators:start --only auth,firestore,functions",
     "build": "npm --prefix frontend run build",
-    "start": "npm --prefix backend start"
-  },
-  "devDependencies": {
-    "concurrently": "^9.0.1"
+    "test": "npm --prefix admin-functions test && npm --prefix frontend test",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:functions": "firebase deploy --only functions:admin",
+    "deploy:web": "npm run build && firebase deploy --only hosting:admin"
   },
   "engines": {
-    "node": ">=18.18"
+    "node": ">=20"
   }
 }

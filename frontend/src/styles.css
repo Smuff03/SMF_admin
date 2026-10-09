@@ -146,3 +146,13 @@ tbody tr:hover td { background: #fcfdfd; } .end { text-align: right; width: 1%; 
   .modal { padding: 20px; } .modal-f .btn { flex: 1; } .ph .btn { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Sign-in */
+.auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+.auth-card { width: 100%; max-width: 420px; padding: 32px; }
+.auth-card .brand { padding: 0 0 20px; margin-bottom: 24px; border-bottom: 1px solid var(--line); } .brand.dark b, .brand.dark small { color: var(--ink); } .brand.dark b span { color: var(--green); }
+.auth-card h1 { font-size: 28px; margin-bottom: 4px; } .auth-card .sub { margin: 0 0 20px; color: var(--muted); }
+.auth-card .field { margin-bottom: 14px; } .auth-card input { width: 100%; }
+.auth-submit { width: 100%; margin-top: 6px; } .auth-forgot { display: block; margin: 14px auto 0; background: none; border: 0; cursor: pointer; }
+.auth-actions { display: flex; gap: 10px; }
+.form-error { color: #b91c1c; font-size: 14px; margin: 4px 0 8px; } .form-info { color: var(--green-d); font-size: 14px; margin: 4px 0 8px; }

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api.js';
+import { dashboard } from '../analytics.js';
 import { useApp } from '../context.jsx';
 import Icon from '../components/Icon.jsx';
 import DataTable from '../components/DataTable.jsx';
@@ -20,26 +20,22 @@ const orderCols = [
 ];
 
 export default function Dashboard() {
-  const { setConnOpen, summary } = useApp();
-  const [d, setD] = useState(null);
-  const [error, setError] = useState('');
+  const { setConnOpen, data, errors } = useApp();
   const [range, setRange] = useState(30);
-
-  useEffect(() => {
-    api.get('/dashboard').then(setD).catch((e) => setError(e.message));
-  }, [summary]);
+  const error = errors.orders || errors.products || '';
+  const d = useMemo(() => (data.orders && data.products ? dashboard(data.orders, data.products) : null), [data.orders, data.products]);
 
   if (error) {
-    return <EmptyState title="Dashboard unavailable" text={`${error}. Make sure the API is running, then check the connection settings.`}
+    return <EmptyState title="Dashboard unavailable" text={`${error}. Check the connection settings.`}
       action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;
   }
   if (!d) return <div className="loading">Loading dashboard…</div>;
 
   const { kpis: k, mix } = d;
-  const data = d.series.slice(-range);
-  const labels = data.map((_, i) => String(i + 1).padStart(2, '0'));
+  const series = d.series.slice(-range);
+  const labels = series.map((_, i) => String(new Date(Date.now() - (series.length - 1 - i) * 864e5).getDate()).padStart(2, '0'));
   const total = mix.retail + mix.wholesale;
-  const retailPct = Math.round((mix.retail / total) * 100);
+  const retailPct = total ? Math.round((mix.retail / total) * 100) : 0;
   const exportReport = () => downloadCsv('tmf-dashboard-report.csv', [
     ['Today\'s sales', k.todaySales], ['Monthly sales', k.monthSales], ['Total orders', k.totalOrders], ['Orders this week', k.weekOrders],
     ['Pending orders', k.pendingOrders], ['Retail sales', mix.retail], ['Wholesale sales', mix.wholesale],
@@ -75,8 +71,8 @@ export default function Dashboard() {
               <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
             </select>
           </div>
-          <div className="legend-row"><span><i className="dot-g" /> Total sales</span><b>{compact(data.reduce((a, b) => a + b, 0))}</b></div>
-          <AreaChart data={data} labels={labels} />
+          <div className="legend-row"><span><i className="dot-g" /> Total sales</span><b>{compact(series.reduce((a, b) => a + b, 0))}</b></div>
+          <AreaChart data={series} labels={labels} />
         </section>
 
         <section className="card pad">
@@ -85,7 +81,7 @@ export default function Dashboard() {
             <Icon name="help" size={22} />
           </div>
           <div className="donut-wrap">
-            <Donut parts={[{ label: 'Retail', value: mix.retail, color: '#22c55e' }, { label: 'Wholesale', value: mix.wholesale, color: '#cbd5e1' }]}>
+            <Donut parts={total ? [{ label: 'Retail', value: mix.retail, color: '#22c55e' }, { label: 'Wholesale', value: mix.wholesale, color: '#cbd5e1' }] : [{ label: 'No sales yet', value: 1, color: '#e5e7eb' }]}>
               <b>{compact(total)}</b><small className="muted">Total sales</small>
             </Donut>
           </div>
@@ -97,7 +93,7 @@ export default function Dashboard() {
       <div className="grid2 mb">
         <section className="card">
           <div className="card-h"><div><h2>Recent orders</h2><p className="sub">Your latest customer activity</p></div><Link className="link" to="/orders">View all <Icon name="arrow" size={16} /></Link></div>
-          <DataTable columns={orderCols} rows={d.recentOrders} />
+          {d.recentOrders.length ? <DataTable columns={orderCols} rows={d.recentOrders} /> : <p className="sub pad">No orders yet. New orders appear here instantly.</p>}
         </section>
         <section className="card">
           <div className="card-h"><div><h2>Low stock</h2><p className="sub">Products that need replenishing</p></div><Link className="link" to="/inventory">View inventory <Icon name="arrow" size={16} /></Link></div>

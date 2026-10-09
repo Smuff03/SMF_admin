@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import { Button, Modal, Popover } from './ui.jsx';
-import { api } from '../api.js';
 import { useApp } from '../context.jsx';
-import { firebaseConfigured, firebaseProject } from '../firebase.js';
+import { useAuth } from '../auth.jsx';
+import { firebaseConfigured, firebaseProject, functionsRegion, useEmulators } from '../firebase.js';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' },
@@ -20,18 +20,26 @@ const NAV = [
 ];
 
 function ConnectionModal({ onClose }) {
-  const [health, setHealth] = useState(null);
-  useEffect(() => { api.get('/health').then(setHealth).catch(() => setHealth(false)); }, []);
+  const { errors, data, online } = useApp();
+  const { user } = useAuth();
+  const failed = Object.keys(errors);
+  const total = Object.keys(data).length;
+  const loaded = Object.values(data).filter((v) => v !== null && v !== undefined).length;
+  const sync = failed.length ? ['Problem with: ' + failed.join(', '), 'bad'] : loaded < total ? ['Connecting…', ''] : ['Live', 'ok'];
   const rows = [
-    ['API server', health === null ? 'Checking…' : health ? `Online (${health.driver} store)` : 'Unreachable', health ? 'ok' : health === null ? '' : 'bad'],
-    ['Firebase', firebaseConfigured ? `Configured (${firebaseProject})` : 'Not configured', firebaseConfigured ? 'ok' : 'bad'],
+    ['Firebase project', firebaseConfigured ? `${firebaseProject}${useEmulators ? ' (local emulators)' : ''}` : 'Not configured', firebaseConfigured ? 'ok' : 'bad'],
+    ['Signed in as', user?.email || 'Unknown', 'ok'],
+    ['Network', online ? 'Online' : 'Offline', online ? 'ok' : 'bad'],
+    ['Live sync (Firestore)', ...sync],
+    ['Write functions region', functionsRegion, ''],
   ];
   return (
     <Modal title="Connection settings" onClose={onClose} width={480}>
       <div className="conn">
-        {rows.map(([k, v, s]) => <div key={k}><span>{k}</span><b className={s}>{v}</b></div>)}
+        {rows.map(([k, v, st]) => <div key={k}><span>{k}</span><b className={st}>{v}</b></div>)}
       </div>
-      <p className="sub">The API runs on the port set in <code>.env</code>. Firebase values come from the <code>VITE_FIREBASE_*</code> variables. Restart the dev server after changing them.</p>
+      {failed.length > 0 && <p className="form-error">{errors[failed[0]]}.</p>}
+      <p className="sub">Firebase values come from the <code>VITE_FIREBASE_*</code> variables in <code>.env</code>. Restart the dev server after changing them.</p>
       <div className="modal-f"><Button variant="primary" onClick={onClose}>Done</Button></div>
     </Modal>
   );
@@ -41,6 +49,7 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const { summary, connOpen, setConnOpen } = useApp();
+  const { user, signOut } = useAuth();
   useEffect(() => { setOpen(false); window.scrollTo(0, 0); }, [pathname]);
   const page = NAV.find((n) => (n.to === '/' ? pathname === '/' : pathname.startsWith(n.to)))?.label || 'Dashboard';
   const alerts = summary.pendingOrders + summary.lowStock > 0;
@@ -83,9 +92,10 @@ export default function Layout() {
               <Link className="pop-item" to="/orders"><b>{summary.pendingOrders} pending orders</b><span>Waiting to be processed</span></Link>
               <Link className="pop-item" to="/inventory"><b>{summary.lowStock} low-stock products</b><span>At or below {summary.lowStockThreshold} units</span></Link>
             </Popover>
-            <Popover trigger={<span className="avatar">AS</span>} label="Account">
-              <div className="pop-body"><b>Admin</b><span className="muted">admin@tmfoods.in</span></div>
-              <button className="pop-item" onClick={() => setConnOpen(true)}><b>Connection settings</b><span>API and Firebase status</span></button>
+            <Popover trigger={<span className="avatar">{(user.email || 'AD').slice(0, 2).toUpperCase()}</span>} label="Account">
+              <div className="pop-body"><b>Admin</b><span className="muted">{user.email}</span></div>
+              <button className="pop-item" onClick={() => setConnOpen(true)}><b>Connection settings</b><span>Firebase status</span></button>
+              <button className="pop-item" onClick={signOut}><b>Sign out</b><span>End this session</span></button>
             </Popover>
           </div>
         </div>

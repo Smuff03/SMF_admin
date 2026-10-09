@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import Icon from '../components/Icon.jsx';
@@ -9,10 +9,10 @@ export default function ResourcePage({
   resource, eyebrow, title, subtitle, addLabel, columns, fields, lookups = [], searchKeys = ['name'], placeholder = 'Search…',
   tabs, filters = [], banner, countNoun = 'records', above, expand, immutable, canEdit = () => true, noun = 'record',
 }) {
-  const { refresh, toast, setConnOpen, summary } = useApp();
-  const [rows, setRows] = useState(null);
-  const [look, setLook] = useState({});
-  const [error, setError] = useState('');
+  const { data, errors, toast, setConnOpen, summary } = useApp();
+  const rows = data[resource];
+  const look = useMemo(() => Object.fromEntries(lookups.map((l) => [l, data[l] || []])), [data, lookups]);
+  const error = errors[resource] || '';
   const [q, setQ] = useState('');
   const [tab, setTab] = useState('All');
   const [fv, setFv] = useState({});
@@ -23,35 +23,19 @@ export default function ResourcePage({
   const [bannerOn, setBannerOn] = useState(true);
   const threshold = summary.lowStockThreshold;
 
-  const load = useCallback(async () => {
-    try {
-      const [data, ...extra] = await Promise.all([api.get(`/${resource}`), ...lookups.map((l) => api.get(`/${l}`))]);
-      setRows(data);
-      setLook(Object.fromEntries(lookups.map((l, i) => [l, extra[i]])));
-      setError('');
-    } catch (e) {
-      setError(e.message);
-      setRows([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resource]);
-  useEffect(() => { load(); }, [load]);
-
   const run = async (fn, message) => {
-    try { await fn(); await load(); refresh(); toast(message); } catch (e) { toast(e.message, 'err'); }
+    try { await fn(); toast(message); } catch (e) { toast(e.message, 'err'); }
   };
   const ctx = {
     look, rows: rows || [], threshold,
-    update: (row, patch, message = 'Changes saved') => run(() => api.put(`/${resource}/${row.id}`, patch), message),
+    update: (row, patch, message = 'Changes saved') => run(() => api.update(resource, row.id, patch), message),
     edit: (row) => setModal({ row }),
     remove: (row) => setConfirm(row),
   };
 
   const save = async (values) => {
     const row = modal.row;
-    if (row) await api.put(`/${resource}/${row.id}`, values); else await api.post(`/${resource}`, values);
-    await load();
-    refresh();
+    if (row) await api.update(resource, row.id, values); else await api.create(resource, values);
     toast(row ? 'Changes saved' : `${addLabel?.replace(/^Add /, '').replace(/^./, (c) => c.toUpperCase()) || 'Record'} added`);
     setModal(null);
   };
@@ -101,7 +85,7 @@ export default function ResourcePage({
       {rows && above?.({ rows, look, threshold })}
 
       {error ? (
-        <EmptyState title={`${title} workspace unavailable`} text={`${error}. Make sure the API is running, then check the connection settings.`}
+        <EmptyState title={`${title} workspace unavailable`} text={`${error}. Check the connection settings.`}
           action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />
       ) : rows === null ? (
         <div className="loading">Loading {title.toLowerCase()}…</div>
@@ -143,7 +127,7 @@ export default function ResourcePage({
       )}
       {confirm && (
         <ConfirmModal title={`Delete ${noun}?`} text="This permanently removes the record. This action is recorded in the audit log."
-          onClose={() => setConfirm(null)} onConfirm={() => { const r = confirm; setConfirm(null); run(() => api.del(`/${resource}/${r.id}`), 'Deleted'); }} />
+          onClose={() => setConfirm(null)} onConfirm={() => { const r = confirm; setConfirm(null); run(() => api.remove(resource, r.id), 'Deleted'); }} />
       )}
     </>
   );
