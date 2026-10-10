@@ -135,3 +135,23 @@ test('every new record gets a createdAt for newest-first ordering', async () => 
   assert.equal(s.col('suppliers')[id].createdAt, '2026-10-10T10:00:00.000Z');
   assert.equal(s.col('suppliers')[id].status, 'Active');
 });
+
+const URL1 = 'https://firebasestorage.googleapis.com/v0/b/smfoods-8eb21.firebasestorage.app/o/products%2Fa.jpg?alt=media&token=t';
+
+test('product images are validated, and the first one becomes imageUrl', async () => {
+  const s = store();
+  const { id } = await s.run(product({ images: [{ url: URL1, path: 'products/a.jpg' }, { url: URL1, path: 'products/b.jpg' }] }));
+  assert.equal(s.col('products')[id].images.length, 2);
+  assert.equal(s.col('products')[id].imageUrl, URL1);
+  await s.run({ resource: 'products', action: 'update', id, data: { images: [] } });
+  assert.equal(s.col('products')[id].imageUrl, '');
+  const none = await s.run(product({ name: 'No pic' }));
+  assert.deepEqual(s.col('products')[none.id].images, []);
+});
+
+test('product images reject foreign urls, odd paths and too many files', async () => {
+  const s = store();
+  await assert.rejects(s.run(product({ images: [{ url: 'https://evil.example/x.jpg', path: 'products/a.jpg' }] })), Fail);
+  await assert.rejects(s.run(product({ images: [{ url: URL1, path: '../secrets/a.jpg' }] })), Fail);
+  await assert.rejects(s.run(product({ images: Array.from({ length: 7 }, (_, i) => ({ url: URL1, path: `products/${i}.jpg` })) })), Fail);
+});

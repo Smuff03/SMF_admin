@@ -23,8 +23,17 @@ const fakeDb = {
 };
 mock.module('firebase-admin/app', { namedExports: { initializeApp: () => ({}) } });
 mock.module('firebase-admin/firestore', { namedExports: { getFirestore: () => fakeDb } });
+const files = new Map(); // storage path -> { buf, options }
+const fakeBucket = {
+  name: 'smfoods-8eb21.firebasestorage.app',
+  file: (path) => ({
+    save: async (buf, options) => { files.set(path, { buf, options }); },
+    delete: async () => { files.delete(path); },
+  }),
+};
+mock.module('firebase-admin/storage', { namedExports: { getStorage: () => ({ bucket: () => fakeBucket }) } });
 
-const { adminMutate } = await import('../src/index.js');
+const { adminMutate, adminImage } = await import('../src/index.js');
 const admin = { uid: 'u1', token: { role: 'admin', email: 'boss@tmfoods.in' } };
 const call = (auth, data) => adminMutate.run({ auth, data, rawRequest: {} });
 
@@ -61,4 +70,25 @@ test('validation and not-found errors map to HttpsError codes; unexpected errors
   fakeDb.runTransaction = async () => { throw new Error('secret internal detail'); };
   await assert.rejects(call(admin, { resource: 'orders', action: 'create', data: {} }), (e) => e.code === 'internal' && !/secret/.test(e.message));
   fakeDb.runTransaction = orig;
+});
+
+const imageCall = (auth, data) => adminImage.run({ auth, data, rawRequest: {} });
+const PNG = Buffer.from('iVBORw0KGgo=', 'base64').toString('base64');
+
+test('adminImage: admin-only, stores under products/ and returns a token URL; delete only touches products/', async () => {
+  await assert.rejects(imageCall(null, { action: 'upload', contentType: 'image/png', data: PNG }), (e) => e.code === 'unauthenticated');
+  await assert.rejects(imageCall({ uid: 'c1', token: { role: 'wholesaler' } }, { action: 'upload', contentType: 'image/png', data: PNG }), (e) => e.code === 'permission-denied');
+  await assert.rejects(imageCall(admin, { action: 'upload', contentType: 'text/html', data: PNG }), (e) => e.code === 'invalid-argument');
+  await assert.rejects(imageCall(admin, { action: 'upload', contentType: 'image/png', data: '' }), (e) => e.code === 'invalid-argument');
+
+  const r = await imageCall(admin, { action: 'upload', contentType: 'image/png', data: PNG });
+  assert.match(r.path, /^products\/[\w-]+\.png$/);
+  assert.ok(r.url.startsWith('https://firebasestorage.googleapis.com/v0/b/smfoods-8eb21.firebasestorage.app/o/products%2F'));
+  assert.ok(r.url.includes('alt=media&token='));
+  assert.ok(files.has(r.path));
+
+  files.set('other/keep.txt', {});
+  await imageCall(admin, { action: 'delete', paths: [r.path, 'other/keep.txt', '../x'] });
+  assert.ok(!files.has(r.path));
+  assert.ok(files.has('other/keep.txt'));
 });

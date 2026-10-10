@@ -7,23 +7,23 @@
  * Against the Auth emulator, set FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 instead.
  * Existing claims (e.g. the storefront's `wholesaler`) are preserved, except `role`.
  */
-import { initializeApp } from 'firebase-admin/app';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 
-const [email, flag] = process.argv.slice(2);
-if (!email || !email.includes('@')) {
-  console.error('Usage: node scripts/set-admin.js <email> [--remove]');
-  process.exit(1);
-}
-initializeApp({ projectId: process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || 'smfoods-8eb21' });
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+dotenv.config({ path: path.join(root, '.env') });
 
-try {
-  const auth = getAuth();
-  const user = await auth.getUserByEmail(email);
-  const { role, ...rest } = user.customClaims || {};
-  await auth.setCustomUserClaims(user.uid, flag === '--remove' ? rest : { ...rest, role: 'admin' });
-  console.log(`${flag === '--remove' ? 'Removed admin role from' : 'Granted admin role to'} ${email} (${user.uid}). They must sign out and back in.`);
-} catch (e) {
-  console.error('Failed:', e.message);
-  process.exit(1);
-}
+const email = process.argv[2];
+const keyPath = path.resolve(root, process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './backend/serviceAccountKey.json');
+if (!email) { console.error('Usage: npm --prefix backend run set-admin -- user@example.com'); process.exit(1); }
+if (!fs.existsSync(keyPath)) { console.error(`Service account key not found: ${keyPath}`); process.exit(1); }
+
+initializeApp({ credential: cert(JSON.parse(fs.readFileSync(keyPath, 'utf8'))) });
+const auth = getAuth();
+const user = await auth.getUserByEmail(email);
+await auth.setCustomUserClaims(user.uid, { ...(user.customClaims || {}), role: 'admin' });
+console.log(`${email} (${user.uid}) is now an admin. Sign out and back in to refresh the token.`);

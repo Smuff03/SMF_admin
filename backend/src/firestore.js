@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 const BATCH = 400;
+// The admin panel keeps its data apart from the storefront's orders/products collections.
+const NAMES = { orders: 'adminOrders', products: 'adminProducts' };
+const real = (n) => NAMES[n] || n;
 
 /** Firestore implementation of the storage contract in db.js (uses the Firebase Admin SDK). */
 export function firestoreDriver(seedData) {
@@ -27,14 +30,14 @@ export function firestoreDriver(seedData) {
     db = getFirestore();
     db.settings({ ignoreUndefinedProperties: true });
 
-    if ((await db.collection('products').limit(1).get()).empty) {
+    if ((await db.collection(real('products')).limit(1).get()).empty) {
       console.log('Firestore is empty, importing seed data…');
       const { meta, ...collections } = seedData;
       await db.doc('meta/main').set(meta);
       for (const [name, rows] of Object.entries(collections)) {
         for (let i = 0; i < rows.length; i += BATCH) {
           const batch = db.batch();
-          rows.slice(i, i + BATCH).forEach((r, j) => batch.set(db.collection(name).doc(r.id), { ...r, _seq: Date.now() - (i + j) }));
+          rows.slice(i, i + BATCH).forEach((r, j) => batch.set(db.collection(real(name)).doc(r.id), { ...r, _seq: Date.now() - (i + j) }));
           await batch.commit();
         }
       }
@@ -48,7 +51,7 @@ export function firestoreDriver(seedData) {
     const { _seq, ...data } = snap.data();
     return { ...data, id: snap.id };
   };
-  const col = async (n) => { await ready; return db.collection(n); };
+  const col = async (n) => { await ready; return db.collection(real(n)); };
 
   return {
     async list(n) {

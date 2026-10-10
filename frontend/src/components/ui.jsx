@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { TONE } from '../utils.js';
+import { MAX_IMAGES, checkImage } from '../storage.js';
 
 export const Button = ({ variant = 'ghost', icon, children, ...p }) => (
   <button className={`btn btn-${variant}`} {...p}>{icon && <Icon name={icon} size={18} />}{children}</button>
@@ -80,6 +81,7 @@ export function FormModal({ title, fields, initial = {}, onSubmit, onClose, subm
   const [values, setValues] = useState(() =>
     Object.fromEntries(fields.map((f) => {
       const v = initial[f.name];
+      if (f.type === 'images') return [f.name, (Array.isArray(v) ? v : []).map((i) => ({ key: i.path, url: i.url, path: i.path }))];
       return [f.name, v === null || v === undefined ? f.default ?? (f.type === 'select' ? opt(f.options[0]).value : '') : String(v)];
     }))
   );
@@ -103,7 +105,9 @@ export function FormModal({ title, fields, initial = {}, onSubmit, onClose, subm
             return (
               <div key={f.name} className={`field ${f.full || f.type === 'textarea' ? 'full' : ''}`}>
                 <label htmlFor={id}>{f.label}{f.required && <span className="req"> *</span>}</label>
-                {f.type === 'select' ? (
+                {f.type === 'images' ? (
+                  <ImagePicker id={id} value={values[f.name]} onChange={(v) => set(f.name, v)} />
+                ) : f.type === 'select' ? (
                   <select id={id} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} required={f.required}>
                     {f.options.map((o) => <option key={opt(o).value} value={opt(o).value}>{opt(o).label}</option>)}
                   </select>
@@ -131,6 +135,60 @@ export function FormModal({ title, fields, initial = {}, onSubmit, onClose, subm
   );
 }
 const opt = (o) => (typeof o === 'object' ? o : { value: o, label: o });
+
+/**
+ * Value is a list of { key, url, path?, file? }: saved images carry url + path, newly picked ones carry the File and a
+ * local preview URL. Nothing is uploaded until the form is submitted (see onBeforeSave in ResourcePage).
+ */
+function ImagePicker({ id, value, onChange, max = MAX_IMAGES }) {
+  const input = useRef(null);
+  const [msg, setMsg] = useState('');
+  const live = useRef(value);
+  live.current = value;
+  useEffect(() => () => live.current.forEach((i) => i.file && URL.revokeObjectURL(i.url)), []);
+
+  const add = (files) => {
+    const next = [];
+    let problem = '';
+    for (const f of Array.from(files)) {
+      const err = checkImage(f);
+      if (err) { problem = err; continue; }
+      if (value.length + next.length >= max) { problem = `You can add up to ${max} images.`; break; }
+      next.push({ key: crypto.randomUUID(), url: URL.createObjectURL(f), file: f });
+    }
+    setMsg(problem);
+    if (next.length) onChange([...value, ...next]);
+  };
+  const remove = (item) => {
+    if (item.file) URL.revokeObjectURL(item.url);
+    onChange(value.filter((i) => i.key !== item.key));
+  };
+  const makeCover = (item) => onChange([item, ...value.filter((i) => i.key !== item.key)]);
+
+  return (
+    <div className="img-picker" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); add(e.dataTransfer.files); }}>
+      <div className="img-grid">
+        {value.map((it, i) => (
+          <div className="img-thumb" key={it.key}>
+            <img src={it.url} alt="" />
+            {i === 0 && <span className="img-cover">Cover</span>}
+            <div className="img-actions">
+              {i > 0 && <button type="button" onClick={() => makeCover(it)} title="Make cover image" aria-label="Make cover image">★</button>}
+              <button type="button" onClick={() => remove(it)} title="Remove image" aria-label="Remove image"><Icon name="x" size={14} /></button>
+            </div>
+          </div>
+        ))}
+        {value.length < max && (
+          <button type="button" className="img-add" onClick={() => input.current?.click()}>
+            <Icon name="plus" size={22} /><span>Add images</span>
+          </button>
+        )}
+      </div>
+      <input ref={input} id={id} type="file" accept="image/*" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = ''; }} />
+      {msg && <small className="img-msg" role="alert">{msg}</small>}
+    </div>
+  );
+}
 
 export function Popover({ trigger, children, label }) {
   const [open, setOpen] = useState(false);

@@ -7,7 +7,7 @@ import { Button, ConfirmModal, EmptyState, FormModal, PageHeader } from '../comp
 
 export default function ResourcePage({
   resource, eyebrow, title, subtitle, addLabel, columns, fields, lookups = [], searchKeys = ['name'], placeholder = 'Search…',
-  tabs, filters = [], banner, countNoun = 'records', above, expand, immutable, canEdit = () => true, noun = 'record',
+  tabs, filters = [], banner, countNoun = 'records', above, expand, immutable, canEdit = () => true, noun = 'record', onBeforeSave, onRemoved,
 }) {
   const { data, errors, toast, setConnOpen, summary } = useApp();
   const rows = data[resource];
@@ -35,7 +35,15 @@ export default function ResourcePage({
 
   const save = async (values) => {
     const row = modal.row;
-    if (row) await api.update(resource, row.id, values); else await api.create(resource, values);
+    // Optional hook (product images): may upload files and return { values, rollback, commit }.
+    const prep = (await onBeforeSave?.(values, row)) || { values };
+    try {
+      if (row) await api.update(resource, row.id, prep.values); else await api.create(resource, prep.values);
+    } catch (e) {
+      await prep.rollback?.();
+      throw e;
+    }
+    await prep.commit?.();
     toast(row ? 'Changes saved' : `${addLabel?.replace(/^Add /, '').replace(/^./, (c) => c.toUpperCase()) || 'Record'} added`);
     setModal(null);
   };
@@ -127,7 +135,7 @@ export default function ResourcePage({
       )}
       {confirm && (
         <ConfirmModal title={`Delete ${noun}?`} text="This permanently removes the record. This action is recorded in the audit log."
-          onClose={() => setConfirm(null)} onConfirm={() => { const r = confirm; setConfirm(null); run(() => api.remove(resource, r.id), 'Deleted'); }} />
+          onClose={() => setConfirm(null)} onConfirm={() => { const r = confirm; setConfirm(null); run(async () => { await api.remove(resource, r.id); await onRemoved?.(r); }, 'Deleted'); }} />
       )}
     </>
   );

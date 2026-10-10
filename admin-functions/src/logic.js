@@ -17,6 +17,23 @@ const bad = (m) => new Fail(m);
 export const MUTABLE = ['orders', 'products', 'inventory', 'purchases', 'suppliers', 'customers', 'wholesalers'];
 const MAX_TEXT = 2000;
 
+export const MAX_IMAGES = 6;
+const IMAGE_URL = 'https://firebasestorage.googleapis.com/';
+const IMAGE_PATH = /^products\/[\w.-]{1,120}$/;
+
+/** Product images are uploaded by the browser to Storage; the doc only keeps [{ url, path }] and we vet them here. */
+function cleanImages(v, name) {
+  if (v === undefined || v === null || v === '') return [];
+  if (!Array.isArray(v)) throw bad(`${name} is invalid`);
+  if (v.length > MAX_IMAGES) throw bad(`A product can have at most ${MAX_IMAGES} images`);
+  return v.map((i) => {
+    const url = typeof i?.url === 'string' ? i.url.trim() : '';
+    const path = typeof i?.path === 'string' ? i.path.trim() : '';
+    if (!url.startsWith(IMAGE_URL) || url.length > 1500 || !IMAGE_PATH.test(path)) throw bad(`${name} is invalid`);
+    return { url, path };
+  });
+}
+
 export function clean(schema, body = {}, partial = false) {
   const out = {};
   for (const [key, s] of Object.entries(schema)) {
@@ -29,6 +46,7 @@ export function clean(schema, body = {}, partial = false) {
       }
       continue;
     }
+    if (s.type === 'images') { out[key] = cleanImages(v, name); continue; }
     if (v === '' || v === null) {
       if (s.required) throw bad(`${name} is required`);
       out[key] = s.nullable ? null : s.type === 'number' ? s.default ?? 0 : '';
@@ -100,12 +118,15 @@ export const resources = {
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
       stock: { type: 'number', int: true, min: 0, default: 0, label: 'Stock' },
       active: { type: 'boolean', default: true, label: 'State' },
+      images: { type: 'images', default: [], label: 'Images' },
     },
     async prepare(ctx, d) {
       const prefix = PREFIX[d.category] || d.category.slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
       const n = await nextNumber(ctx.tx, `sku-${prefix}`, 0);
-      return { mrp: null, retailPrice: null, wholesalePrice: null, ...d, sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: ctx.now };
+      return { mrp: null, retailPrice: null, wholesalePrice: null, ...d, imageUrl: d.images?.[0]?.url || '', sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: ctx.now };
     },
+    // `imageUrl` mirrors the first (cover) image so lists and the storefront need not read the array.
+    async beforeUpdate(ctx, existing, patch) { return 'images' in patch ? { ...patch, imageUrl: patch.images[0]?.url || '' } : patch; },
   },
 
   inventory: {
