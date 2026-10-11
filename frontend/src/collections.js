@@ -15,5 +15,6 @@ export const COLLECTIONS = {
   customers: 'customers',
   wholesalers: 'wholesalers',
   'audit-logs': 'audit-logs',
+  expenses: 'expenses',
   meta: 'meta',
 };

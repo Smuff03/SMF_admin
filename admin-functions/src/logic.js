@@ -14,7 +14,7 @@ export class Fail extends Error {
 }
 const bad = (m) => new Fail(m);
 
-export const MUTABLE = ['orders', 'products', 'inventory', 'purchases', 'suppliers', 'customers', 'wholesalers'];
+export const MUTABLE = ['orders', 'products', 'inventory', 'purchases', 'suppliers', 'customers', 'wholesalers', 'expenses'];
 const MAX_TEXT = 2000;
 
 export const MAX_IMAGES = 6;
@@ -206,11 +206,24 @@ export const resources = {
       status: { enum: ['Active', 'On hold'], default: 'Active', label: 'Status' },
     },
   },
+
+  expenses: {
+    entity: 'Expense',
+    label: (r) => `${r.category}: ${r.description}`,
+    schema: {
+      description: { required: true, label: 'Description' },
+      category: { required: true, enum: ['Offline Sale', 'Raw Material', 'Packaging', 'Transport', 'Salary', 'Utilities', 'Other'], label: 'Category' },
+      amount: { type: 'number', required: true, min: 0, label: 'Amount' },
+      date: { required: true, label: 'Date' },
+      note: { label: 'Note' },
+    },
+    async prepare(ctx, d) { return { ...d, createdAt: ctx.now }; },
+  },
 };
 
-function audit(ctx, action, def, row) {
+function audit(ctx, action, def, row, extra = {}) {
   const id = ctx.tx.newId('audit-logs');
-  ctx.tx.set('audit-logs', id, { id, user: ctx.actor, action, entity: def.entity, detail: def.label(row), createdAt: ctx.now });
+  ctx.tx.set('audit-logs', id, { id, user: ctx.actor, action, entity: def.entity, detail: def.label(row), createdAt: ctx.now, ...extra });
 }
 
 /** Run one create / update / delete. Returns { id }. Throws Fail on invalid input. */
@@ -226,7 +239,9 @@ export async function perform(ctx, { resource, action, id, data }) {
     const row = { createdAt: ctx.now, ...doc, id: rowId };
     tx.set(resource, rowId, row);
     await def.afterCreate?.(ctx, row);
-    audit(ctx, 'Created', def, row);
+    const snapshot = {};
+    for (const k of Object.keys(def.schema)) if (row[k] !== undefined) snapshot[k] = row[k];
+    audit(ctx, 'Created', def, row, { snapshot });
     return { id: rowId };
   }
 
@@ -241,14 +256,18 @@ export async function perform(ctx, { resource, action, id, data }) {
     tx.update(resource, id, patch);
     const after = { ...existing, ...patch, id };
     await def.afterUpdate?.(ctx, existing, after);
-    audit(ctx, 'Updated', def, after);
+    const changes = {};
+    for (const k of Object.keys(patch)) if (k !== 'id' && k !== 'createdAt') changes[k] = { from: existing[k] ?? null, to: patch[k] ?? null };
+    audit(ctx, 'Updated', def, after, { changes });
     return { id };
   }
 
   if (action === 'delete') {
     if (def.immutable) throw bad('This record cannot be deleted');
     tx.delete(resource, id);
-    audit(ctx, 'Deleted', def, existing);
+    const snapshot = {};
+    for (const k of Object.keys(def.schema)) if (existing[k] !== undefined) snapshot[k] = existing[k];
+    audit(ctx, 'Deleted', def, existing, { snapshot });
     return { id };
   }
 
