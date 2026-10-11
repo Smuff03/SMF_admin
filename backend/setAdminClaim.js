@@ -1,6 +1,4 @@
-// backend/setAdminClaim.js
-import admin from 'firebase-admin';
-import { createRequire } from 'module';
+﻿import admin from 'firebase-admin';
 import { readFileSync } from 'fs';
 
 const serviceAccount = JSON.parse(
@@ -11,15 +9,16 @@ admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
 });
 
-const uid = 'DHPzCVDaJcaQey4UYLGFxX4GByF3';
+const ADMINS = [
+    'DHPzCVDaJcaQey4UYLGFxX4GByF3',
+    'SqSl3elWc5hsnaqqESfBo3UTu7x2',
+];
 
-const user = await admin.auth().getUser(uid);
-console.log('Before:', user.customClaims);
+for (const uid of ADMINS) {
+    await admin.auth().setCustomUserClaims(uid, { role: 'admin' });
+    const user = await admin.auth().getUser(uid);
+    console.log(`✅ ${uid} → claims:`, user.customClaims);
+}
 
-await admin.auth().setCustomUserClaims(uid, { role: 'admin' });
-
-const updated = await admin.auth().getUser(uid);
-console.log('✅ Claims set:', updated.customClaims);
-console.log('Sign out and back in to refresh your token.');
-
+console.log('\nDone. Both users must sign out and back in.');
 process.exit(0);
