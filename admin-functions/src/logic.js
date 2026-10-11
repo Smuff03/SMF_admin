@@ -113,9 +113,12 @@ export const resources = {
     schema: {
       name: { required: true, label: 'Name' },
       category: { required: true, label: 'Category' },
+      description: { label: 'Description' },
+      packSize: { label: 'Quantity' },
       mrp: { type: 'number', nullable: true, min: 0, label: 'MRP' },
       retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
+      costPrice: { type: 'number', nullable: true, min: 0, label: 'Cost price' },
       stock: { type: 'number', int: true, min: 0, default: 0, label: 'Stock' },
       active: { type: 'boolean', default: true, label: 'State' },
       images: { type: 'images', default: [], label: 'Images' },
@@ -123,7 +126,7 @@ export const resources = {
     async prepare(ctx, d) {
       const prefix = PREFIX[d.category] || d.category.slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
       const n = await nextNumber(ctx.tx, `sku-${prefix}`, 0);
-      return { mrp: null, retailPrice: null, wholesalePrice: null, ...d, imageUrl: d.images?.[0]?.url || '', sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: ctx.now };
+      return { mrp: null, retailPrice: null, wholesalePrice: null, costPrice: null, ...d, imageUrl: d.images?.[0]?.url || '', sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: ctx.now };
     },
     // `imageUrl` mirrors the first (cover) image so lists and the storefront need not read the array.
     async beforeUpdate(ctx, existing, patch) { return 'images' in patch ? { ...patch, imageUrl: patch.images[0]?.url || '' } : patch; },
