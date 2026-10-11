@@ -10,7 +10,7 @@ const price = (v) => (v == null ? <Muted /> : inr(v));
 const columns = [
   {
     label: 'Product', render: (r) => (
-      <div className="cell">{r.imageUrl ? <img className="tile tile-img" src={r.imageUrl} alt="" loading="lazy" /> : <Tile>{initial(r.name)}</Tile>}<div><b>{r.name}</b><small className="muted">{r.sku}</small></div></div>
+      <div className="cell">{r.imageUrl ? <img className="tile tile-img" src={r.imageUrl} alt="" loading="lazy" /> : <Tile>{initial(r.name)}</Tile>}<div><b>{r.name}</b><small className="muted">{r.sku}{r.packSize ? ` · ${r.packSize}` : ''}</small></div></div>
     )
   },
   { label: 'Category', key: 'category' },
@@ -26,6 +26,7 @@ const fields = () => [
   { name: 'name', label: 'Product name', required: true, full: true },
   { name: 'description', label: 'Description', type: 'textarea', full: true, placeholder: 'What it is, taste, ingredients, shelf life…', hint: 'Shown to customers on the store.' },
   { name: 'category', label: 'Category', type: 'select', options: CATEGORIES },
+  { name: 'packSize', label: 'Quantity / pack size', placeholder: 'e.g. 250 g, 500 g, 1 kg', hint: 'Net quantity in one pack. Shown to customers on the store.' },
   { name: 'stock', label: 'Opening stock (units)', type: 'number', min: 0, step: '1', default: '0' },
   { name: 'mrp', label: 'MRP (₹)', type: 'number', min: 0, step: '0.01', placeholder: 'Not set' },
   { name: 'retailPrice', label: 'Retail price (₹)', type: 'number', min: 0, step: '0.01', placeholder: 'Not set' },
@@ -47,6 +48,7 @@ const margin = (r) => {
 const expand = (r, c) => (
   <div className="expand-body">
     <div><small className="muted">Margin</small><b>{margin(r)}</b></div>
+    {r.packSize && <div><small className="muted">Quantity</small><b>{r.packSize}</b></div>}
     <div><small className="muted">Added</small><b>{new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</b></div>
     {r.description && <div className="expand-desc"><small className="muted">Description</small><p>{r.description}</p></div>}
     {r.images?.length > 0 && (
