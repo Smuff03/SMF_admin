@@ -1,0 +1,18 @@
+{
+  "name": "tmf-bizhub",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm --prefix admin-functions install && npm --prefix frontend install",
+    "dev": "npm --prefix frontend run dev",
+    "emulators": "firebase emulators:start --only auth,firestore,functions",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix admin-functions test && npm --prefix frontend test",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:functions": "firebase deploy --only functions:admin",
+    "deploy:web": "npm run build && firebase deploy --only hosting:admin"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
