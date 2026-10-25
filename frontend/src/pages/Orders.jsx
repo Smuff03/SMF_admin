@@ -38,10 +38,20 @@ export default function Orders() {
 
   const updateOrderStatus = async (order, status) => {
     try {
-      await api.update('orders', order.id, { status });
+      const res = order.source === 'Customer Portal' ? 'storefrontOrders' : 'orders';
+      try {
+        await api.update(res, order.id, { status, orderStatus: status });
+      } catch (err) {
+        const alt = res === 'orders' ? 'storefrontOrders' : 'orders';
+        try {
+          await api.update(alt, order.id, { status, orderStatus: status });
+        } catch {
+          throw err;
+        }
+      }
       toast(`Order #${order.id} status updated to ${status}`);
       if (billModal && billModal.id === order.id) {
-        setBillModal((b) => ({ ...b, status }));
+        setBillModal((b) => ({ ...b, status, orderStatus: status }));
       }
     } catch (e) {
       toast(e.message, 'err');
@@ -70,9 +80,13 @@ export default function Orders() {
       const res = order.source === 'Customer Portal' ? 'storefrontOrders' : 'orders';
       try {
         await api.remove(res, order.id);
-      } catch {
+      } catch (err) {
         const alt = res === 'orders' ? 'storefrontOrders' : 'orders';
-        await api.remove(alt, order.id);
+        try {
+          await api.remove(alt, order.id);
+        } catch {
+          throw err;
+        }
       }
       toast(`Order #${order.id} deleted and stock restored`);
       setConfirmDelete(null);

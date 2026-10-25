@@ -40,11 +40,11 @@ export const adminMutate = onCall(async (request) => {
       const tx = {
         get: async (r, docId) => {
           let s = await t.get(ref(r, docId));
-          if (s.exists) return s.data();
+          if (s.exists) return { id: s.id, ...s.data() };
           if (r === 'orders' || r === 'storefrontOrders') {
             const alt = r === 'orders' ? 'storefrontOrders' : 'orders';
             s = await t.get(ref(alt, docId));
-            if (s.exists) return s.data();
+            if (s.exists) return { id: s.id, ...s.data() };
           }
           return null;
         },

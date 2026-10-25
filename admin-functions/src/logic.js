@@ -99,6 +99,7 @@ async function receivePurchase(ctx, po) {
 
 export function extractItemWeightKg(item) {
   if (Number(item?.totalWeightKg) > 0) return Number(item.totalWeightKg);
+  if (Number(item?.kg) > 0) return Number(item.kg);
   let perUnitKg = Number(item?.weightInKg);
   if (!Number.isFinite(perUnitKg) || perUnitKg <= 0) {
     const s = String(item?.weightVariant || item?.packSize || item?.weight || '').toLowerCase().trim();
@@ -115,7 +116,8 @@ export function extractItemWeightKg(item) {
       else perUnitKg = 1;
     }
   }
-  return Math.round((perUnitKg || 1) * (Number(item?.quantity) || 1) * 1000) / 1000;
+  const qty = Number(item?.quantity ?? item?.qty) || 1;
+  return Math.round((perUnitKg || 1) * qty * 1000) / 1000;
 }
 
 export function getOrderItems(order) {
@@ -133,6 +135,7 @@ export const resources = {
       type: { required: true, enum: ['Retail', 'Wholesale'], label: 'Type' },
       amount: { type: 'number', required: true, min: 0, label: 'Amount' },
       status: { enum: ['Pending', 'Processing', 'Dispatched', 'Delivered', 'Cancelled'], default: 'Pending', label: 'Status' },
+      orderStatus: { label: 'Order status' },
       note: { label: 'Note' },
       items: { type: 'items', default: [], label: 'Items' },
       phone: { label: 'Phone' },
@@ -151,7 +154,8 @@ export const resources = {
     },
     async afterCreate(ctx, order) {
       const items = getOrderItems(order);
-      if (order.status !== 'Cancelled' && items.length > 0) {
+      const st = order.status || order.orderStatus;
+      if (st !== 'Cancelled' && items.length > 0) {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;
@@ -187,7 +191,10 @@ export const resources = {
       const items = afterItems.length ? afterItems : beforeItems;
       if (!items.length) return;
 
-      if (before.status !== 'Cancelled' && after.status === 'Cancelled') {
+      const beforeSt = before.status || before.orderStatus;
+      const afterSt = after.status || after.orderStatus;
+
+      if (beforeSt !== 'Cancelled' && afterSt === 'Cancelled') {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;
@@ -205,7 +212,7 @@ export const resources = {
             stockTracker.set(productId, newStock);
           }
         }
-      } else if (before.status === 'Cancelled' && after.status !== 'Cancelled') {
+      } else if (beforeSt === 'Cancelled' && afterSt !== 'Cancelled') {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;
@@ -227,7 +234,8 @@ export const resources = {
     },
     async afterDelete(ctx, existing) {
       const items = getOrderItems(existing);
-      if (existing.status !== 'Cancelled' && items.length > 0) {
+      const st = existing.status || existing.orderStatus;
+      if (st !== 'Cancelled' && items.length > 0) {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;

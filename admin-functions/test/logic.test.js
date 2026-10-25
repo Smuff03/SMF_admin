@@ -232,5 +232,22 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   await s.run({ resource: 'storefrontOrders', action: 'delete', id: 'portal-999' });
   assert.equal(s.col('products')[p1].stock, 51);
   assert.equal(s.col('storefrontOrders')['portal-999'], undefined);
+
+  // 8. Customer portal order matching live storefront schema: orderStatus, items with qty and kg
+  s.col('storefrontOrders')['TMF-1002'] = {
+    id: 'TMF-1002',
+    orderStatus: 'Dispatched',
+    customer: { name: 'Arpita Shigvan', phone: '8625883384' },
+    type: 'Retail',
+    amount: 182,
+    items: [
+      { productId: p1, name: 'Chivda Special', weight: '1kg', qty: 1, kg: 1 },
+      { productId: p1, name: 'Chivda Special', weight: '200g', qty: 2, kg: 0.4 },
+    ]
+  };
+  // Delete -> Restores 1.4 kg (51 kg + 1.4 kg = 52.4 kg)
+  await s.run({ resource: 'storefrontOrders', action: 'delete', id: 'TMF-1002' });
+  assert.equal(s.col('products')[p1].stock, 52.4);
+  assert.equal(s.col('storefrontOrders')['TMF-1002'], undefined);
 });
 
