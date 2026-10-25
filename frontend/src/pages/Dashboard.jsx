@@ -12,7 +12,7 @@ const delta = (v, label) => <small className={v >= 0 ? 'up' : 'down'}>{v >= 0 ? 
 
 const orderCols = [
   { label: 'Order', render: (r) => <b>#{r.id}</b> },
-  { label: 'Customer', key: 'customer' },
+  { label: 'Customer', render: (r) => (typeof r.customer === 'object' && r.customer ? (r.customer.name || r.customer.email || 'Customer') : (r.customer || '—')) },
   { label: 'Type', render: (r) => <Badge>{r.type}</Badge> },
   { label: 'Amount', render: (r) => <b>{inr(r.amount)}</b> },
   { label: 'Status', render: (r) => <Badge>{r.status}</Badge> },

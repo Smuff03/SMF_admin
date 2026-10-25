@@ -34,6 +34,9 @@ export function storefrontDocs(p, existingPricing, now) {
         adminProductId: p.id, createdAt: p.createdAt || now, updatedAt: now,
         description: optional('description', 'desc'),
         packSize: optional('packSize', 'pack', 'size'),
+        startingQuantity: str(p.startingQuantity) || '',
+        availableQuantities: Array.isArray(p.availableQuantities) ? p.availableQuantities : [],
+        variantPricing: Array.isArray(p.variantPricing) ? p.variantPricing : [],
         ...(hasImageKeys ? { imageUrl: imgs[0] || '', images: imgs } : {}),
     };
     const pricing = num(p.wholesalePrice)

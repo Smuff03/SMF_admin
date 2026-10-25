@@ -70,10 +70,37 @@ async function withTotals(db, rows, field) {
 
 const PREFIX = { 'Bhajani Chakli': 'BHA', Chivda: 'CHI', Namkeen: 'NAM', Farsan: 'FAR', Sweets: 'SWE', Papad: 'PAP' };
 
+function extractItemWeightKg(item) {
+  if (Number(item?.totalWeightKg) > 0) return Number(item.totalWeightKg);
+  let perUnitKg = Number(item?.weightInKg);
+  if (!Number.isFinite(perUnitKg) || perUnitKg <= 0) {
+    const s = String(item?.weightVariant || item?.packSize || item?.weight || '').toLowerCase().trim();
+    if (s.includes('1/2') || s === '500 gm' || s === '500g') perUnitKg = 0.5;
+    else if (s.includes('200')) perUnitKg = 0.2;
+    else if (s.includes('250')) perUnitKg = 0.25;
+    else if (s.includes('1 kg') || s === '1kg') perUnitKg = 1.0;
+    else if (s.includes('2 kg') || s === '2kg') perUnitKg = 2.0;
+    else if (s.includes('5 kg') || s === '5kg') perUnitKg = 5.0;
+    else {
+      const num = parseFloat(s);
+      if (s.includes('gm') || s.includes('g')) perUnitKg = (num || 0) / 1000;
+      else if (s.includes('kg')) perUnitKg = num || 0;
+      else perUnitKg = 1;
+    }
+  }
+  return Math.round((perUnitKg || 1) * (Number(item?.quantity) || 1) * 1000) / 1000;
+}
+
+function getOrderItems(order) {
+  if (Array.isArray(order?.items) && order.items.length > 0) return order.items;
+  if (Array.isArray(order?.cart) && order.cart.length > 0) return order.cart;
+  return [];
+}
+
 export const resources = {
   orders: {
     entity: 'Order',
-    label: (r) => `${r.id} for ${r.customer}`,
+    label: (r) => `${r.id} for ${typeof r.customer === 'object' && r.customer ? (r.customer.name || r.customer.fullName || r.customer.email || 'Customer') : (r.customer || 'Customer')}`,
     schema: {
       customer: { required: true, label: 'Customer' },
       type: { required: true, enum: ['Retail', 'Wholesale'], label: 'Type' },
@@ -96,16 +123,20 @@ export const resources = {
     },
     async afterCreate(db, row) {
       await bookSale(db, row, 1);
-      if (row.status !== 'Cancelled' && Array.isArray(row.items)) {
-        for (const item of row.items) {
-          if (!item.productId) continue;
-          const product = await db.get('products', item.productId);
+      const items = getOrderItems(row);
+      if (row.status !== 'Cancelled' && items.length > 0) {
+        for (const item of items) {
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await db.get('products', productId);
           if (product) {
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
+            const custName = typeof row.customer === 'object' && row.customer ? (row.customer.name || row.customer.fullName || 'Customer') : (row.customer || 'Customer');
             await moveStock(db, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${row.id} - ${row.customer} (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${row.id} - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             });
           }
         }
@@ -123,30 +154,38 @@ export const resources = {
     async afterUpdate(db, before, after) {
       await bookSale(db, before, -1);
       await bookSale(db, after, 1);
-      const items = Array.isArray(after.items) && after.items.length ? after.items : Array.isArray(before.items) ? before.items : [];
+      const afterItems = getOrderItems(after);
+      const beforeItems = getOrderItems(before);
+      const items = afterItems.length ? afterItems : beforeItems;
+      if (!items.length) return;
+
       if (before.status !== 'Cancelled' && after.status === 'Cancelled') {
         for (const item of items) {
-          if (!item.productId) continue;
-          const product = await db.get('products', item.productId);
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await db.get('products', productId);
           if (product) {
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             await moveStock(db, product, weightKg, {
               type: 'Stock in',
               quantity: weightKg,
-              note: `Order ${after.id} Cancelled - Restocked (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${after.id} Cancelled - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             });
           }
         }
       } else if (before.status === 'Cancelled' && after.status !== 'Cancelled') {
         for (const item of items) {
-          if (!item.productId) continue;
-          const product = await db.get('products', item.productId);
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await db.get('products', productId);
           if (product) {
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             await moveStock(db, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${after.id} Reinstated - Stock deducted (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${after.id} Reinstated - Stock deducted (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             });
           }
         }
@@ -154,16 +193,19 @@ export const resources = {
     },
     async afterDelete(db, row) {
       await bookSale(db, row, -1);
-      if (row.status !== 'Cancelled' && Array.isArray(row.items)) {
-        for (const item of row.items) {
-          if (!item.productId) continue;
-          const product = await db.get('products', item.productId);
+      const items = getOrderItems(row);
+      if (row.status !== 'Cancelled' && items.length > 0) {
+        for (const item of items) {
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await db.get('products', productId);
           if (product) {
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             await moveStock(db, product, weightKg, {
               type: 'Stock in',
               quantity: weightKg,
-              note: `Order ${row.id} Deleted - Restocked (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${row.id} Deleted - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             });
           }
         }
@@ -179,6 +221,9 @@ export const resources = {
       category: { required: true, label: 'Category' },
       description: { label: 'Description' },
       packSize: { label: 'Quantity' },
+      startingQuantity: { label: 'Starting quantity' },
+      availableQuantities: { type: 'array', default: [], label: 'Available quantities' },
+      variantPricing: { type: 'array', default: [], label: 'Variant pricing' },
       mrp: { type: 'number', nullable: true, min: 0, label: 'MRP' },
       retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
@@ -190,7 +235,27 @@ export const resources = {
       const rows = await db.list('products');
       const prefix = PREFIX[d.category] || d.category.slice(0, 3).toUpperCase();
       const n = rows.filter((r) => r.category === d.category).length + 1;
-      return { mrp: null, retailPrice: null, wholesalePrice: null, costPrice: null, ...d, stock: Number(d.stock) || 0, sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: now() };
+      const availableQuantities = Array.isArray(d.availableQuantities) && d.availableQuantities.length > 0
+        ? d.availableQuantities
+        : d.packSize ? String(d.packSize).split(',').map((s) => s.trim()).filter(Boolean) : ['200 gm', '500 gm', '1 kg'];
+      const startingQuantity = d.startingQuantity || availableQuantities[0] || '200 gm';
+      const packSize = d.packSize || availableQuantities.join(', ');
+      const variantPricing = Array.isArray(d.variantPricing) ? d.variantPricing : [];
+      const startVp = variantPricing.find((v) => v.weight === startingQuantity) || variantPricing[0];
+      const mrp = d.mrp ?? (startVp?.mrp ? Number(startVp.mrp) : null);
+      const retailPrice = d.retailPrice ?? (startVp?.retailPrice ? Number(startVp.retailPrice) : null);
+      const wholesalePrice = d.wholesalePrice ?? (startVp?.wholesalePrice ? Number(startVp.wholesalePrice) : null);
+      return {
+        mrp, retailPrice, wholesalePrice, costPrice: null,
+        ...d,
+        startingQuantity,
+        availableQuantities,
+        variantPricing,
+        packSize,
+        stock: Number(d.stock) || 0,
+        sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`,
+        createdAt: now()
+      };
     },
   },
 
@@ -232,7 +297,12 @@ export const resources = {
       if (!product) throw bad('Product not found');
       return { ...d, id: nextId(await db.list('purchases'), 'PO', 3020), productName: product.name, amount: d.quantity * d.unitCost, createdAt: now() };
     },
-    async afterCreate(db, row) { if (row.status === 'Received') await receivePurchase(db, row); },
+    async afterCreate(db, row) {
+      if (row.productId && row.unitCost != null) {
+        await db.update('products', row.productId, { costPrice: row.unitCost });
+      }
+      if (row.status === 'Received') await receivePurchase(db, row);
+    },
     async beforeUpdate(db, existing, patch) {
       if (existing.status === 'Received') throw bad('Received purchases are locked');
       const next = { ...patch };
@@ -244,7 +314,12 @@ export const resources = {
       next.amount = (patch.quantity ?? existing.quantity) * (patch.unitCost ?? existing.unitCost);
       return next;
     },
-    async afterUpdate(db, before, after) { if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(db, after); },
+    async afterUpdate(db, before, after) {
+      if (after.productId && after.unitCost != null) {
+        await db.update('products', after.productId, { costPrice: after.unitCost });
+      }
+      if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(db, after);
+    },
   },
 
   suppliers: {
@@ -283,3 +358,4 @@ export const resources = {
 
   'audit-logs': { readOnly: true, schema: {} },
 };
+resources.storefrontOrders = resources.orders;

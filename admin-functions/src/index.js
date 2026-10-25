@@ -38,11 +38,34 @@ export const adminMutate = onCall(async (request) => {
       const touched = new Map(); // productId -> [{ op: 'set'|'patch'|'delete', doc }]
       const track = (docId, entry) => touched.set(docId, [...(touched.get(docId) || []), entry]);
       const tx = {
-        get: async (r, docId) => { const s = await t.get(ref(r, docId)); return s.exists ? s.data() : null; },
+        get: async (r, docId) => {
+          let s = await t.get(ref(r, docId));
+          if (s.exists) return s.data();
+          if (r === 'orders' || r === 'storefrontOrders') {
+            const alt = r === 'orders' ? 'storefrontOrders' : 'orders';
+            s = await t.get(ref(alt, docId));
+            if (s.exists) return s.data();
+          }
+          return null;
+        },
         set: (r, docId, doc) => { if (r === 'products') track(docId, { op: 'set', doc }); writes.push(() => t.set(ref(r, docId), doc)); },
-        update: (r, docId, patch) => { if (r === 'products') track(docId, { op: 'patch', doc: patch }); writes.push(() => t.set(ref(r, docId), patch, { merge: true })); },
-        delete: (r, docId) => { if (r === 'products') track(docId, { op: 'delete' }); writes.push(() => t.delete(ref(r, docId))); },
-        newId: (r) => db.collection(COLLECTIONS[r]).doc().id,
+        update: (r, docId, patch) => {
+          if (r === 'products') track(docId, { op: 'patch', doc: patch });
+          writes.push(() => t.set(ref(r, docId), patch, { merge: true }));
+          if (r === 'orders' || r === 'storefrontOrders') {
+            const alt = r === 'orders' ? 'storefrontOrders' : 'orders';
+            writes.push(() => t.set(ref(alt, docId), patch, { merge: true }));
+          }
+        },
+        delete: (r, docId) => {
+          if (r === 'products') track(docId, { op: 'delete' });
+          writes.push(() => t.delete(ref(r, docId)));
+          if (r === 'orders' || r === 'storefrontOrders') {
+            const alt = r === 'orders' ? 'storefrontOrders' : 'orders';
+            writes.push(() => t.delete(ref(alt, docId)));
+          }
+        },
+        newId: (r) => db.collection(COLLECTIONS[r] || r).doc().id,
       };
       const now = new Date().toISOString();
       const result = await perform({ tx, actor, uid: request.auth.uid, now }, { resource, action, id, data });

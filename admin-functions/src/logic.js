@@ -14,7 +14,7 @@ export class Fail extends Error {
 }
 const bad = (m) => new Fail(m);
 
-export const MUTABLE = ['orders', 'products', 'inventory', 'purchases', 'suppliers', 'customers', 'wholesalers', 'expenses'];
+export const MUTABLE = ['orders', 'storefrontOrders', 'products', 'inventory', 'purchases', 'suppliers', 'customers', 'wholesalers', 'expenses'];
 const MAX_TEXT = 2000;
 
 export const MAX_IMAGES = 6;
@@ -97,10 +97,37 @@ async function receivePurchase(ctx, po) {
   if (product) await moveStock(ctx, product, po.quantity, { type: 'Stock in', quantity: po.quantity, note: po.notes || `Received against ${po.id}` });
 }
 
+export function extractItemWeightKg(item) {
+  if (Number(item?.totalWeightKg) > 0) return Number(item.totalWeightKg);
+  let perUnitKg = Number(item?.weightInKg);
+  if (!Number.isFinite(perUnitKg) || perUnitKg <= 0) {
+    const s = String(item?.weightVariant || item?.packSize || item?.weight || '').toLowerCase().trim();
+    if (s.includes('1/2') || s === '500 gm' || s === '500g') perUnitKg = 0.5;
+    else if (s.includes('200')) perUnitKg = 0.2;
+    else if (s.includes('250')) perUnitKg = 0.25;
+    else if (s.includes('1 kg') || s === '1kg') perUnitKg = 1.0;
+    else if (s.includes('2 kg') || s === '2kg') perUnitKg = 2.0;
+    else if (s.includes('5 kg') || s === '5kg') perUnitKg = 5.0;
+    else {
+      const num = parseFloat(s);
+      if (s.includes('gm') || s.includes('g')) perUnitKg = (num || 0) / 1000;
+      else if (s.includes('kg')) perUnitKg = num || 0;
+      else perUnitKg = 1;
+    }
+  }
+  return Math.round((perUnitKg || 1) * (Number(item?.quantity) || 1) * 1000) / 1000;
+}
+
+export function getOrderItems(order) {
+  if (Array.isArray(order?.items) && order.items.length > 0) return order.items;
+  if (Array.isArray(order?.cart) && order.cart.length > 0) return order.cart;
+  return [];
+}
+
 export const resources = {
   orders: {
     entity: 'Order',
-    label: (r) => `${r.id} for ${r.customer}`,
+    label: (r) => `${r.id} for ${typeof r.customer === 'object' && r.customer ? (r.customer.name || r.customer.fullName || r.customer.email || 'Customer') : (r.customer || 'Customer')}`,
     schema: {
       customer: { required: true, label: 'Customer' },
       type: { required: true, enum: ['Retail', 'Wholesale'], label: 'Type' },
@@ -123,20 +150,24 @@ export const resources = {
       return { ...d, id, deliveredAt, createdAt: ctx.now };
     },
     async afterCreate(ctx, order) {
-      if (order.status !== 'Cancelled' && Array.isArray(order.items) && order.items.length > 0) {
+      const items = getOrderItems(order);
+      if (order.status !== 'Cancelled' && items.length > 0) {
         const stockTracker = new Map();
-        for (const item of order.items) {
-          if (!item.productId) continue;
-          const product = await ctx.tx.get('products', item.productId);
+        for (const item of items) {
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await ctx.tx.get('products', productId);
           if (product) {
-            const current = stockTracker.has(item.productId) ? stockTracker.get(item.productId) : Number(product.stock) || 0;
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
+            const custName = typeof order.customer === 'object' && order.customer ? (order.customer.name || order.customer.fullName || 'Customer') : (order.customer || 'Customer');
             const newStock = await moveStock(ctx, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${order.id} - ${order.customer} (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${order.id} - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             }, current);
-            stockTracker.set(item.productId, newStock);
+            stockTracker.set(productId, newStock);
           }
         }
       }
@@ -151,58 +182,67 @@ export const resources = {
       return patch;
     },
     async afterUpdate(ctx, before, after) {
-      const items = Array.isArray(after.items) && after.items.length ? after.items : Array.isArray(before.items) ? before.items : [];
+      const afterItems = getOrderItems(after);
+      const beforeItems = getOrderItems(before);
+      const items = afterItems.length ? afterItems : beforeItems;
       if (!items.length) return;
 
       if (before.status !== 'Cancelled' && after.status === 'Cancelled') {
         const stockTracker = new Map();
         for (const item of items) {
-          if (!item.productId) continue;
-          const product = await ctx.tx.get('products', item.productId);
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await ctx.tx.get('products', productId);
           if (product) {
-            const current = stockTracker.has(item.productId) ? stockTracker.get(item.productId) : Number(product.stock) || 0;
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const newStock = await moveStock(ctx, product, weightKg, {
               type: 'Stock in',
               quantity: weightKg,
-              note: `Order ${after.id} Cancelled - Restocked (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${after.id} Cancelled - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             }, current);
-            stockTracker.set(item.productId, newStock);
+            stockTracker.set(productId, newStock);
           }
         }
       } else if (before.status === 'Cancelled' && after.status !== 'Cancelled') {
         const stockTracker = new Map();
         for (const item of items) {
-          if (!item.productId) continue;
-          const product = await ctx.tx.get('products', item.productId);
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await ctx.tx.get('products', productId);
           if (product) {
-            const current = stockTracker.has(item.productId) ? stockTracker.get(item.productId) : Number(product.stock) || 0;
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const newStock = await moveStock(ctx, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${after.id} Reinstated - Stock deducted (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${after.id} Reinstated - Stock deducted (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             }, current);
-            stockTracker.set(item.productId, newStock);
+            stockTracker.set(productId, newStock);
           }
         }
       }
     },
     async afterDelete(ctx, existing) {
-      if (existing.status !== 'Cancelled' && Array.isArray(existing.items) && existing.items.length > 0) {
+      const items = getOrderItems(existing);
+      if (existing.status !== 'Cancelled' && items.length > 0) {
         const stockTracker = new Map();
-        for (const item of existing.items) {
-          if (!item.productId) continue;
-          const product = await ctx.tx.get('products', item.productId);
+        for (const item of items) {
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await ctx.tx.get('products', productId);
           if (product) {
-            const current = stockTracker.has(item.productId) ? stockTracker.get(item.productId) : Number(product.stock) || 0;
-            const weightKg = Number(item.totalWeightKg) || ((Number(item.weightInKg) || 1) * (Number(item.quantity) || 1));
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            const weightKg = extractItemWeightKg(item);
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const newStock = await moveStock(ctx, product, weightKg, {
               type: 'Stock in',
               quantity: weightKg,
-              note: `Order ${existing.id} Deleted - Restocked (${item.productName || product.name}${item.weightVariant ? ` · ${item.weightVariant}` : ''})`
+              note: `Order ${existing.id} Deleted - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             }, current);
-            stockTracker.set(item.productId, newStock);
+            stockTracker.set(productId, newStock);
           }
         }
       }
@@ -217,6 +257,9 @@ export const resources = {
       category: { required: true, label: 'Category' },
       description: { label: 'Description' },
       packSize: { label: 'Quantity' },
+      startingQuantity: { label: 'Starting quantity' },
+      availableQuantities: { type: 'array', default: [], label: 'Available quantities' },
+      variantPricing: { type: 'array', default: [], label: 'Variant pricing' },
       mrp: { type: 'number', nullable: true, min: 0, label: 'MRP' },
       retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
@@ -228,10 +271,39 @@ export const resources = {
     async prepare(ctx, d) {
       const prefix = PREFIX[d.category] || d.category.slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
       const n = await nextNumber(ctx.tx, `sku-${prefix}`, 0);
-      return { mrp: null, retailPrice: null, wholesalePrice: null, costPrice: null, ...d, stock: Number(d.stock) || 0, imageUrl: d.images?.[0]?.url || '', sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`, createdAt: ctx.now };
+      const availableQuantities = Array.isArray(d.availableQuantities) && d.availableQuantities.length > 0
+        ? d.availableQuantities
+        : d.packSize ? String(d.packSize).split(',').map((s) => s.trim()).filter(Boolean) : ['200 gm', '500 gm', '1 kg'];
+      const startingQuantity = d.startingQuantity || availableQuantities[0] || '200 gm';
+      const packSize = d.packSize || availableQuantities.join(', ');
+      const variantPricing = Array.isArray(d.variantPricing) ? d.variantPricing : [];
+      const startVp = variantPricing.find((v) => v.weight === startingQuantity) || variantPricing[0];
+      const mrp = d.mrp ?? (startVp?.mrp ? Number(startVp.mrp) : null);
+      const retailPrice = d.retailPrice ?? (startVp?.retailPrice ? Number(startVp.retailPrice) : null);
+      const wholesalePrice = d.wholesalePrice ?? (startVp?.wholesalePrice ? Number(startVp.wholesalePrice) : null);
+      return {
+        mrp, retailPrice, wholesalePrice, costPrice: null,
+        ...d,
+        startingQuantity,
+        availableQuantities,
+        variantPricing,
+        packSize,
+        stock: Number(d.stock) || 0,
+        imageUrl: d.images?.[0]?.url || '',
+        sku: `TMF-${prefix}-${String(n).padStart(3, '0')}`,
+        createdAt: ctx.now
+      };
     },
     // `imageUrl` mirrors the first (cover) image so lists and the storefront need not read the array.
-    async beforeUpdate(ctx, existing, patch) { return 'images' in patch ? { ...patch, imageUrl: patch.images[0]?.url || '' } : patch; },
+    async beforeUpdate(ctx, existing, patch) {
+      const out = { ...patch };
+      if ('images' in patch) out.imageUrl = patch.images[0]?.url || '';
+      if ('availableQuantities' in patch && !patch.packSize) {
+        const aq = Array.isArray(patch.availableQuantities) ? patch.availableQuantities : [];
+        if (aq.length > 0) out.packSize = aq.join(', ');
+      }
+      return out;
+    },
   },
 
   inventory: {
@@ -272,7 +344,12 @@ export const resources = {
       if (!product) throw bad('Product not found');
       return { ...d, id: `PO-${await nextNumber(ctx.tx, 'purchases', 3020)}`, productName: product.name, amount: d.quantity * d.unitCost, createdAt: ctx.now };
     },
-    async afterCreate(ctx, row) { if (row.status === 'Received') await receivePurchase(ctx, row); },
+    async afterCreate(ctx, row) {
+      if (row.productId && row.unitCost != null) {
+        ctx.tx.update('products', row.productId, { costPrice: row.unitCost });
+      }
+      if (row.status === 'Received') await receivePurchase(ctx, row);
+    },
     async beforeUpdate(ctx, existing, patch) {
       if (existing.status === 'Received') throw bad('Received purchases are locked');
       const next = { ...patch };
@@ -284,7 +361,12 @@ export const resources = {
       next.amount = (patch.quantity ?? existing.quantity) * (patch.unitCost ?? existing.unitCost);
       return next;
     },
-    async afterUpdate(ctx, before, after) { if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(ctx, after); },
+    async afterUpdate(ctx, before, after) {
+      if (after.productId && after.unitCost != null) {
+        ctx.tx.update('products', after.productId, { costPrice: after.unitCost });
+      }
+      if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(ctx, after);
+    },
   },
 
   suppliers: {
@@ -325,6 +407,7 @@ export const resources = {
     async prepare(ctx, d) { return { ...d, createdAt: ctx.now }; },
   },
 };
+resources.storefrontOrders = resources.orders;
 
 function audit(ctx, action, def, row, extra = {}) {
   const id = ctx.tx.newId('audit-logs');

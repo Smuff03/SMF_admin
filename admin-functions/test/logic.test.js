@@ -86,6 +86,7 @@ test('receiving a purchase adds stock once and locks the purchase', async () => 
   assert.equal(po, 'PO-3021');
   assert.equal(s.col('purchases')[po].amount, 3800);
   assert.equal(s.col('products')[pid].stock, 30);
+  assert.equal(s.col('products')[pid].costPrice, 38);
 
   await s.run({ resource: 'purchases', action: 'update', id: po, data: { quantity: 120 } });
   assert.equal(s.col('purchases')[po].amount, 4560);
@@ -105,6 +106,31 @@ test('a purchase created as Received adds stock immediately', async () => {
   const { id: pid } = await s.run(product({ stock: 0 }));
   await s.run({ resource: 'purchases', action: 'create', data: { supplier: 'Om', productId: pid, quantity: 50, unitCost: 4, status: 'Received' } });
   assert.equal(s.col('products')[pid].stock, 50);
+  assert.equal(s.col('products')[pid].costPrice, 4);
+});
+
+test('products support DMart variant pricing, startingQuantity and availableQuantities', async () => {
+  const s = store();
+  const { id: pid } = await s.run({
+    resource: 'products',
+    action: 'create',
+    data: {
+      name: 'Special Farsan',
+      category: 'Farsan',
+      startingQuantity: '500 gm',
+      availableQuantities: ['500 gm', '1 kg'],
+      variantPricing: [
+        { weight: '500 gm', mrp: 180, retailPrice: 160, wholesalePrice: 130 },
+        { weight: '1 kg', mrp: 350, retailPrice: 310, wholesalePrice: 250 },
+      ]
+    }
+  });
+  const prod = s.col('products')[pid];
+  assert.equal(prod.startingQuantity, '500 gm');
+  assert.deepEqual(prod.availableQuantities, ['500 gm', '1 kg']);
+  assert.equal(prod.mrp, 180);
+  assert.equal(prod.retailPrice, 160);
+  assert.equal(prod.costPrice, null);
 });
 
 test('update and delete require an existing record; delete is audited', async () => {
@@ -192,5 +218,19 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   // 6. Delete order -> Restores 1.2 kg back to 50 kg
   await s.run({ resource: 'orders', action: 'delete', id: o1 });
   assert.equal(s.col('products')[p1].stock, 50);
+
+  // 7. Customer portal order via storefrontOrders with cart and object customer
+  s.col('storefrontOrders')['portal-999'] = {
+    id: 'portal-999',
+    customer: { name: 'Portal Customer', email: 'portal@crunchzy.in' },
+    type: 'Retail',
+    amount: 300,
+    status: 'Pending',
+    cart: [{ id: p1, name: 'Chivda Special', weight: '500 gm', quantity: 2 }] // 2 * 0.5 kg = 1.0 kg
+  };
+  // Delete storefrontOrders -> Restores 1.0 kg (50 kg + 1.0 kg = 51 kg)
+  await s.run({ resource: 'storefrontOrders', action: 'delete', id: 'portal-999' });
+  assert.equal(s.col('products')[p1].stock, 51);
+  assert.equal(s.col('storefrontOrders')['portal-999'], undefined);
 });
 

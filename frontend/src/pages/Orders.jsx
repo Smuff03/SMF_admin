@@ -67,10 +67,17 @@ export default function Orders() {
 
   const removeOrder = async (order) => {
     try {
-      await api.remove('orders', order.id);
-      toast(`Order #${order.id} removed and stock restored`);
+      const res = order.source === 'Customer Portal' ? 'storefrontOrders' : 'orders';
+      try {
+        await api.remove(res, order.id);
+      } catch {
+        const alt = res === 'orders' ? 'storefrontOrders' : 'orders';
+        await api.remove(alt, order.id);
+      }
+      toast(`Order #${order.id} deleted and stock restored`);
       setConfirmDelete(null);
       if (billModal && billModal.id === order.id) setBillModal(null);
+      if (orderModal && orderModal.order && orderModal.order.id === order.id) setOrderModal(null);
     } catch (e) {
       toast(e.message, 'err');
     }
@@ -129,7 +136,7 @@ export default function Orders() {
       label: 'Customer',
       render: (r) => (
         <div>
-          <b>{r.customer}</b>
+          <b>{typeof r.customer === 'object' && r.customer ? (r.customer.name || r.customer.email || 'Customer') : (r.customer || '—')}</b>
           {r.phone && <small className="muted block">{r.phone}</small>}
         </div>
       ),
@@ -316,6 +323,11 @@ export default function Orders() {
           wholesalers={wholesalers}
           onClose={() => setOrderModal(null)}
           onSave={saveOrder}
+          onDelete={orderModal.order ? () => {
+            const target = orderModal.order;
+            setOrderModal(null);
+            setConfirmDelete(target);
+          } : null}
         />
       )}
 
@@ -330,6 +342,11 @@ export default function Orders() {
             setBillModal(null);
             setOrderModal({ order: current });
           }}
+          onDelete={() => {
+            const target = billModal;
+            setBillModal(null);
+            setConfirmDelete(target);
+          }}
         />
       )}
 
@@ -337,7 +354,7 @@ export default function Orders() {
       {confirmDelete && (
         <ConfirmModal
           title={`Delete Order #${confirmDelete.id}?`}
-          text={`This will delete order #${confirmDelete.id} for ${confirmDelete.customer}. Any stock in Kg deducted by this order will be automatically restored to inventory.`}
+          text={`This will delete order #${confirmDelete.id} for ${typeof confirmDelete.customer === 'object' && confirmDelete.customer ? (confirmDelete.customer.name || confirmDelete.customer.fullName || confirmDelete.customer.email || 'Customer') : (confirmDelete.customer || 'Customer')}. Any stock in Kg deducted by this order will be automatically restored to inventory.`}
           confirmLabel="Delete & Restore Stock"
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => removeOrder(confirmDelete)}
@@ -350,7 +367,7 @@ export default function Orders() {
 /**
  * Enterprise Order & Bill Builder Modal
  */
-function OrderBuilderModal({ order, products, customers, wholesalers, onClose, onSave }) {
+function OrderBuilderModal({ order, products, customers, wholesalers, onClose, onSave, onDelete }) {
   const isEdit = Boolean(order?.id);
 
   const [customer, setCustomer] = useState(order?.customer || '');
@@ -379,25 +396,37 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
         id: it.id || Math.random().toString(36).slice(2, 9),
       }));
     }
+    const defaultProd = products[0];
+    const defaultVariant = defaultProd?.startingQuantity || defaultProd?.availableQuantities?.[0] || '500 gm';
+    const initialPrice = getProductVariantPrice(defaultProd, defaultVariant, '', type);
+    const initWeight = parseWeightKg(defaultVariant, '');
     return [
       {
         id: Math.random().toString(36).slice(2, 9),
-        productId: products[0]?.id || '',
-        productName: products[0]?.name || '',
-        sku: products[0]?.sku || '',
-        weightVariant: '500 gm',
+        productId: defaultProd?.id || '',
+        productName: defaultProd?.name || '',
+        sku: defaultProd?.sku || '',
+        weightVariant: defaultVariant,
         customKg: '',
-        weightInKg: 0.5,
+        weightInKg: initWeight,
         quantity: 1,
-        totalWeightKg: 0.5,
-        price: products[0]?.retailPrice || 100,
-        amount: products[0]?.retailPrice || 100,
+        totalWeightKg: initWeight,
+        price: initialPrice,
+        amount: initialPrice,
       },
     ];
   });
 
   const getProductVariantPrice = (prod, variant, customKg, ordType) => {
     if (!prod) return 0;
+    if (Array.isArray(prod.variantPricing)) {
+      const vp = prod.variantPricing.find((v) => v.weight === variant);
+      if (vp) {
+        if (ordType === 'Wholesale' && Number(vp.wholesalePrice) > 0) return Number(vp.wholesalePrice);
+        if (Number(vp.retailPrice) > 0) return Number(vp.retailPrice);
+        if (Number(vp.mrp) > 0) return Number(vp.mrp);
+      }
+    }
     const baseKgPrice =
       ordType === 'Wholesale'
         ? Number(prod.wholesalePrice || prod.retailPrice || 0)
@@ -408,7 +437,9 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
 
   const addItemRow = () => {
     const defaultProd = products[0];
-    const initialPrice = getProductVariantPrice(defaultProd, '500 gm', '', type);
+    const defaultVariant = defaultProd?.startingQuantity || defaultProd?.availableQuantities?.[0] || '500 gm';
+    const initialPrice = getProductVariantPrice(defaultProd, defaultVariant, '', type);
+    const initWeight = parseWeightKg(defaultVariant, '');
     setItems((cur) => [
       ...cur,
       {
@@ -416,11 +447,11 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
         productId: defaultProd?.id || '',
         productName: defaultProd?.name || '',
         sku: defaultProd?.sku || '',
-        weightVariant: '500 gm',
+        weightVariant: defaultVariant,
         customKg: '',
-        weightInKg: 0.5,
+        weightInKg: initWeight,
         quantity: 1,
-        totalWeightKg: 0.5,
+        totalWeightKg: initWeight,
         price: initialPrice,
         amount: initialPrice,
       },
@@ -441,7 +472,10 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
         if (prod) {
           it.productName = prod.name;
           it.sku = prod.sku;
-          it.price = getProductVariantPrice(prod, it.weightVariant, it.customKg, type);
+          const defaultVariant = prod.startingQuantity || prod.availableQuantities?.[0] || it.weightVariant || '500 gm';
+          it.weightVariant = defaultVariant;
+          it.weightInKg = parseWeightKg(defaultVariant, it.customKg);
+          it.price = getProductVariantPrice(prod, defaultVariant, it.customKg, type);
         }
       }
 
@@ -651,11 +685,34 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
                       value={it.weightVariant}
                       onChange={(e) => updateItem(idx, 'weightVariant', e.target.value)}
                     >
-                      {WEIGHT_VARIANTS.map((v) => (
-                        <option key={v.value} value={v.value}>
-                          {v.label}
-                        </option>
-                      ))}
+                      {selectedProd?.availableQuantities?.length > 0 ? (
+                        <>
+                          <optgroup label="Available Sizes (This Product)">
+                            {selectedProd.availableQuantities.map((q) => {
+                              const vp = selectedProd.variantPricing?.find((v) => v.weight === q);
+                              const priceTag = vp ? (type === 'Wholesale' && vp.wholesalePrice ? ` (₹${vp.wholesalePrice})` : vp.retailPrice ? ` (₹${vp.retailPrice})` : '') : '';
+                              return (
+                                <option key={q} value={q}>
+                                  {q}{q === selectedProd.startingQuantity ? ' ★ Starting' : ''}{priceTag}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                          <optgroup label="Other Standard Sizes">
+                            {WEIGHT_VARIANTS.filter((v) => !selectedProd.availableQuantities.includes(v.value)).map((v) => (
+                              <option key={v.value} value={v.value}>
+                                {v.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </>
+                      ) : (
+                        WEIGHT_VARIANTS.map((v) => (
+                          <option key={v.value} value={v.value}>
+                            {v.label}
+                          </option>
+                        ))
+                      )}
                     </select>
                     {it.weightVariant === 'Custom' && (
                       <input
@@ -752,13 +809,26 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
           />
         </div>
 
-        <div className="modal-f">
-          <Button type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button variant="primary" type="submit" disabled={saving}>
-            {saving ? 'Saving Order…' : isEdit ? 'Save Changes' : 'Generate Bill & Save Order'}
-          </Button>
+        <div className="modal-f" style={{ display: 'flex', justifyContent: isEdit && onDelete ? 'space-between' : 'flex-end', width: '100%' }}>
+          {isEdit && onDelete && (
+            <Button
+              type="button"
+              variant="ghost"
+              icon="trash"
+              onClick={onDelete}
+              style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+            >
+              Delete Order
+            </Button>
+          )}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={saving}>
+              {saving ? 'Saving Order…' : isEdit ? 'Save Changes' : 'Generate Bill & Save Order'}
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>
@@ -768,7 +838,7 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
 /**
  * Enterprise Billing Slip / Tax Invoice Modal (Printable & Itemized)
  */
-function BillingSlipModal({ order, onClose, onStatusChange, onEdit }) {
+function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) {
   const items = Array.isArray(order.items) && order.items.length ? order.items : [];
   const totalWeightKg = items.reduce(
     (sum, it) =>
@@ -954,10 +1024,22 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit }) {
         </div>
 
         {/* Action Buttons */}
-        <div className="modal-f no-print" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Button icon="pencil" onClick={onEdit}>
-            Edit Order Details
-          </Button>
+        <div className="modal-f no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button icon="pencil" onClick={onEdit}>
+              Edit Order Details
+            </Button>
+            {onDelete && (
+              <Button
+                variant="ghost"
+                icon="trash"
+                onClick={onDelete}
+                style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+              >
+                Delete Order
+              </Button>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <Button icon="printer" onClick={handlePrint}>
               Print Invoice

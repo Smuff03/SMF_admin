@@ -185,3 +185,197 @@ tbody tr:hover td { background: #fcfdfd; } .end { text-align: right; width: 1%; 
   .overlay { position: static; background: none; padding: 0; }
 }
 
+/* Product Quantities & Starting Pack Selector */
+.qty-config-box {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.qty-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.qty-section-head b {
+  font-size: 13px;
+  color: var(--ink);
+}
+.qty-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.qty-pill {
+  padding: 8px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .15s ease;
+}
+.qty-pill:hover {
+  border-color: var(--green);
+  background: #f0fdf4;
+}
+.qty-pill.active {
+  background: var(--green-d);
+  border-color: var(--green-d);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(22, 101, 52, .22);
+}
+.qty-chips-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.qty-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s ease;
+}
+.qty-chip-btn:hover {
+  border-color: #86efac;
+}
+.qty-chip-btn.checked {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #14532d;
+  font-weight: 600;
+}
+.qty-chip-btn.is-starting {
+  border-color: var(--green);
+}
+.qty-badge-start {
+  font-size: 10px;
+  background: var(--green-d);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 99px;
+  font-weight: 700;
+}
+.qty-custom-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+}
+.qty-custom-row input {
+  max-width: 170px;
+  height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.qty-custom-row button {
+  height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.qty-summary-banner {
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qty-summary-banner b {
+  color: #14532d;
+}
+.qty-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 500;
+}
+.qty-tag.start-tag {
+  background: var(--green-l);
+  color: var(--green-d);
+  font-weight: 700;
+}
+
+/* DMart Style Quantity Pricing Table */
+.dmart-pricing-wrap {
+  margin-top: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.dmart-pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dmart-pricing-table th {
+  background: #f1f5f9;
+  padding: 10px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #475569;
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: .05em;
+}
+.dmart-pricing-table td {
+  padding: 8px 12px;
+  border-top: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+.dmart-pricing-table input {
+  height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+  min-width: 90px;
+}
+.dmart-savings-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #dcfce7;
+  color: #15803d;
+  white-space: nowrap;
+}
+.dmart-info-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+

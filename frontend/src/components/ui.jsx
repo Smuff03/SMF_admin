@@ -82,6 +82,7 @@ export function FormModal({ title, fields, initial = {}, onSubmit, onClose, subm
     Object.fromEntries(fields.map((f) => {
       const v = initial[f.name];
       if (f.type === 'images') return [f.name, (Array.isArray(v) ? v : []).map((i) => ({ key: i.path, url: i.url, path: i.path }))];
+      if (f.type === 'array' || Array.isArray(v)) return [f.name, Array.isArray(v) ? v : (f.default ?? [])];
       return [f.name, v === null || v === undefined ? f.default ?? (f.type === 'select' ? opt(f.options[0]).value : '') : String(v)];
     }))
   );
@@ -101,11 +102,14 @@ export function FormModal({ title, fields, initial = {}, onSubmit, onClose, subm
       <form onSubmit={submit}>
         <div className="form-grid">
           {fields.map((f) => {
+            if (f.type === 'hidden') return null;
             const id = `${uid}-${f.name}`;
             return (
               <div key={f.name} className={`field ${f.full || f.type === 'textarea' ? 'full' : ''}`}>
-                <label htmlFor={id}>{f.label}{f.required && <span className="req"> *</span>}</label>
-                {f.type === 'images' ? (
+                {f.label && <label htmlFor={id}>{f.label}{f.required && <span className="req"> *</span>}</label>}
+                {f.render ? (
+                  f.render({ id, value: values[f.name], values, onChange: (v) => set(f.name, v), setField: set })
+                ) : f.type === 'images' ? (
                   <ImagePicker id={id} value={values[f.name]} onChange={(v) => set(f.name, v)} />
                 ) : f.type === 'select' ? (
                   <select id={id} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)} required={f.required}>

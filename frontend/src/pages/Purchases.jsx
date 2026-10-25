@@ -19,7 +19,7 @@ const fields = ({ suppliers = [], products = [] }) => [
   { name: 'supplier', label: 'Supplier', type: 'select', full: true, options: suppliers.filter((s) => s.status === 'Active').map((s) => s.name) },
   { name: 'productId', label: 'Product', type: 'select', full: true, options: products.map((p) => ({ value: p.id, label: `${p.name} (Current: ${formatWeight(p.stock)})` })) },
   { name: 'quantity', label: 'Quantity (in Kg)', type: 'number', min: 0.1, step: '0.1', required: true, hint: 'Enter batch weight in Kg. Marking as Received increases stock and reflects in customer portal.' },
-  { name: 'unitCost', label: 'Unit cost per Kg (₹)', type: 'number', min: 0, step: '0.01', required: true },
+  { name: 'unitCost', label: 'Unit cost per Kg (₹)', type: 'number', min: 0, step: '0.01', required: true, hint: 'Vendor purchase cost per Kg. Automatically sets the product cost price and profit margins across the store.' },
   { name: 'status', label: 'Status', type: 'select', options: PO_STATUS, default: 'Ordered', hint: 'Marking as Received adds stock (Kg) to inventory and locks the purchase order.' },
   { name: 'notes', label: 'Notes & Invoice Ref', type: 'textarea', placeholder: 'Vendor bill number, batch code, vehicle details…' },
 ];

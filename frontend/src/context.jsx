@@ -57,17 +57,41 @@ export function AppProvider({ children }) {
 
   // Rows per collection (null while the first snapshot is pending), with per-customer / per-supplier totals derived live.
   const data = useMemo(() => {
-    const adminOrders = raw.orders || [];
-    const portalOrders = (raw.storefrontOrders || []).map((po) => ({
-      ...po,
-      source: 'Customer Portal',
-      customer: po.customer || po.userName || po.userId || 'Portal Customer',
-      type: po.type || (po.isWholesale ? 'Wholesale' : 'Retail'),
-      amount: Number(po.amount || po.totalAmount || 0),
-      status: po.status || po.orderStatus || 'Pending',
-      items: Array.isArray(po.items) ? po.items : Array.isArray(po.cart) ? po.cart : [],
-      createdAt: po.createdAt || new Date().toISOString(),
-    }));
+    const normalizeOrder = (o, isPortal = false) => {
+      const custObj = typeof o.customer === 'object' && o.customer !== null ? o.customer : {};
+      const userObj = typeof o.user === 'object' && o.user !== null ? o.user : {};
+      const shipObj = typeof o.shippingAddress === 'object' && o.shippingAddress !== null ? o.shippingAddress : {};
+
+      const customer = (typeof o.customer === 'string' && o.customer.trim())
+        || custObj.name || custObj.fullName
+        || o.customerName
+        || o.userName
+        || userObj.name || userObj.fullName
+        || shipObj.fullName || shipObj.name
+        || custObj.email || userObj.email || o.email
+        || (isPortal ? 'Portal Customer' : 'Direct Customer');
+
+      const phone = (typeof o.phone === 'string' ? o.phone : '') || custObj.phone || userObj.phone || shipObj.phone || o.userPhone || '';
+      const email = (typeof o.email === 'string' ? o.email : '') || custObj.email || userObj.email || o.userEmail || '';
+      const address = o.address || (typeof o.shippingAddress === 'string' ? o.shippingAddress : (shipObj.addressLine1 || shipObj.city) ? `${shipObj.addressLine1 || ''} ${shipObj.city || ''} ${shipObj.pincode || ''}`.trim() : '');
+
+      return {
+        ...o,
+        customer,
+        phone,
+        email,
+        address,
+        source: o.source || (isPortal ? 'Customer Portal' : 'Admin Direct'),
+        type: o.type || (o.isWholesale ? 'Wholesale' : 'Retail'),
+        amount: Number(o.amount || o.totalAmount || o.total || 0),
+        status: o.status || o.orderStatus || 'Pending',
+        items: Array.isArray(o.items) ? o.items : Array.isArray(o.cart) ? o.cart : [],
+        createdAt: o.createdAt || new Date().toISOString(),
+      };
+    };
+
+    const adminOrders = (raw.orders || []).map((o) => normalizeOrder(o, false));
+    const portalOrders = (raw.storefrontOrders || []).map((po) => normalizeOrder(po, true));
     const combinedOrders = newest([
       ...adminOrders,
       ...portalOrders.filter((po) => !adminOrders.some((ao) => ao.portalOrderId === po.id || ao.id === po.id))
@@ -75,12 +99,26 @@ export function AppProvider({ children }) {
     const orders = raw.orders !== undefined || raw.storefrontOrders !== undefined ? combinedOrders : null;
     const purchases = raw.purchases ? newest(raw.purchases) : null;
     const withOrders = (rows) => rows && newest(rows).map((r) => {
-      const mine = (orders || []).filter((o) => o.status !== 'Cancelled' && String(o.customer || '').toLowerCase() === String(r.name || '').toLowerCase());
+      const rName = String(r.name || '').toLowerCase().trim();
+      const mine = (orders || []).filter((o) => {
+        if (o.status === 'Cancelled') return false;
+        const oCust = typeof o.customer === 'string' ? o.customer.toLowerCase().trim() : '';
+        return oCust === rName;
+      });
       return { ...r, orders: mine.length, totalSpent: sumBy(mine, (o) => o.amount) };
     });
     return {
       orders,
-      products: raw.products ? newest(raw.products) : null,
+      products: raw.products ? newest(raw.products).map((p) => {
+        const productPurchases = (raw.purchases || []).filter((po) => po.productId === p.id && po.status !== 'Cancelled');
+        const latestPo = productPurchases.sort((a, b) => time(b) - time(a))[0];
+        const costPrice = latestPo?.unitCost !== undefined ? latestPo.unitCost : (p.costPrice ?? null);
+        return {
+          ...p,
+          costPrice,
+          latestPurchase: latestPo ? { id: latestPo.id, supplier: latestPo.supplier, unitCost: latestPo.unitCost, createdAt: latestPo.createdAt } : null
+        };
+      }) : null,
       inventory: raw.inventory ?? null,
       purchases,
       suppliers: raw.suppliers && newest(raw.suppliers).map((r) => {

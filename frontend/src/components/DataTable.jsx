@@ -1,5 +1,13 @@
 import { Fragment } from 'react';
 
+function formatCell(val) {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object' && !('$$typeof' in val)) {
+    return val.name || val.label || val.title || val.customer || val.id || JSON.stringify(val);
+  }
+  return val;
+}
+
 export default function DataTable({ columns, rows, ctx, expanded, renderExpanded }) {
   // Position is part of the key so two columns with the same (or an empty) label never collide.
   const colKey = (c, i) => `${c.key || c.label || 'col'}-${i}`;
@@ -15,7 +23,9 @@ export default function DataTable({ columns, rows, ctx, expanded, renderExpanded
             <Fragment key={r.id}>
               <tr>
                 {columns.map((c, i) => (
-                  <td key={colKey(c, i)} className={c.className} data-label={c.label}>{c.render ? c.render(r, ctx) : r[c.key]}</td>
+                  <td key={colKey(c, i)} className={c.className} data-label={c.label}>
+                    {formatCell(c.render ? c.render(r, ctx) : r[c.key])}
+                  </td>
                 ))}
               </tr>
               {expanded === r.id && renderExpanded && (
