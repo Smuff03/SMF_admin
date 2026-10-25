@@ -379,9 +379,30 @@ export default function Orders() {
 }
 
 /**
+ * Helper: derive variant price based on product configuration and order type
+ */
+function getProductVariantPrice(prod, variant, customKg, ordType) {
+  if (!prod) return 0;
+  if (Array.isArray(prod.variantPricing)) {
+    const vp = prod.variantPricing.find((v) => v.weight === variant);
+    if (vp) {
+      if (ordType === 'Wholesale' && Number(vp.wholesalePrice) > 0) return Number(vp.wholesalePrice);
+      if (Number(vp.retailPrice) > 0) return Number(vp.retailPrice);
+      if (Number(vp.mrp) > 0) return Number(vp.mrp);
+    }
+  }
+  const baseKgPrice =
+    ordType === 'Wholesale'
+      ? Number(prod.wholesalePrice || prod.retailPrice || 0)
+      : Number(prod.retailPrice || prod.mrp || 0);
+  const weightKg = parseWeightKg(variant, customKg);
+  return Math.round(baseKgPrice * weightKg);
+}
+
+/**
  * Enterprise Order & Bill Builder Modal
  */
-function OrderBuilderModal({ order, products, customers, wholesalers, onClose, onSave, onDelete }) {
+function OrderBuilderModal({ order, products = [], customers = [], wholesalers = [], onClose, onSave, onDelete }) {
   const isEdit = Boolean(order?.id);
 
   const [customer, setCustomer] = useState(order?.customer || '');
@@ -410,9 +431,9 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
         id: it.id || Math.random().toString(36).slice(2, 9),
       }));
     }
-    const defaultProd = products[0];
+    const defaultProd = products[0] || null;
     const defaultVariant = defaultProd?.startingQuantity || defaultProd?.availableQuantities?.[0] || '500 gm';
-    const initialPrice = getProductVariantPrice(defaultProd, defaultVariant, '', type);
+    const initialPrice = defaultProd ? getProductVariantPrice(defaultProd, defaultVariant, '', type) : 0;
     const initWeight = parseWeightKg(defaultVariant, '');
     return [
       {
@@ -431,28 +452,10 @@ function OrderBuilderModal({ order, products, customers, wholesalers, onClose, o
     ];
   });
 
-  const getProductVariantPrice = (prod, variant, customKg, ordType) => {
-    if (!prod) return 0;
-    if (Array.isArray(prod.variantPricing)) {
-      const vp = prod.variantPricing.find((v) => v.weight === variant);
-      if (vp) {
-        if (ordType === 'Wholesale' && Number(vp.wholesalePrice) > 0) return Number(vp.wholesalePrice);
-        if (Number(vp.retailPrice) > 0) return Number(vp.retailPrice);
-        if (Number(vp.mrp) > 0) return Number(vp.mrp);
-      }
-    }
-    const baseKgPrice =
-      ordType === 'Wholesale'
-        ? Number(prod.wholesalePrice || prod.retailPrice || 0)
-        : Number(prod.retailPrice || prod.mrp || 0);
-    const weightKg = parseWeightKg(variant, customKg);
-    return Math.round(baseKgPrice * weightKg);
-  };
-
   const addItemRow = () => {
-    const defaultProd = products[0];
+    const defaultProd = products[0] || null;
     const defaultVariant = defaultProd?.startingQuantity || defaultProd?.availableQuantities?.[0] || '500 gm';
-    const initialPrice = getProductVariantPrice(defaultProd, defaultVariant, '', type);
+    const initialPrice = defaultProd ? getProductVariantPrice(defaultProd, defaultVariant, '', type) : 0;
     const initWeight = parseWeightKg(defaultVariant, '');
     setItems((cur) => [
       ...cur,
