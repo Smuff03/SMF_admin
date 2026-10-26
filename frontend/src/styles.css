@@ -190,11 +190,33 @@ tbody tr:hover td { background: #fcfdfd; } .end { text-align: right; width: 1%; 
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) rotate(-15deg);
+  transform: translate(-50%, -50%) rotate(-8deg);
   pointer-events: none;
   user-select: none;
   opacity: 0.055;
   z-index: 0;
+  width: 480px;
+  max-width: 85%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.inv-watermark-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  filter: contrast(1.05);
+}
+
+.inv-icon {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .inv-contact-bar {
@@ -376,6 +398,10 @@ tbody tr:hover td { background: #fcfdfd; } .end { text-align: right; width: 1%; 
     print-color-adjust: exact !important;
   }
   .inv-contact-pill {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .inv-icon, .inv-watermark-img {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

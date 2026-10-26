@@ -953,36 +953,22 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
 /**
  * Crunchzy Brand Logo Component
  */
-function CrunchzyLogo({ size = 52 }) {
+function CrunchzyLogo({ height = 60 }) {
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <defs>
-        <linearGradient id="crunchzyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#f59e0b" />
-          <stop offset="50%" stopColor="#ea580c" />
-          <stop offset="100%" stopColor="#c2410c" />
-        </linearGradient>
-        <linearGradient id="crunchzyGreen" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#10b981" />
-          <stop offset="100%" stopColor="#047857" />
-        </linearGradient>
-      </defs>
-      {/* Outer rounded starburst badge */}
-      <rect x="6" y="6" width="88" height="88" rx="24" fill="url(#crunchzyGrad)" />
-      {/* Inner decorative ring */}
-      <rect x="12" y="12" width="76" height="76" rx="18" fill="none" stroke="#ffffff" strokeWidth="2" strokeDasharray="6 4" opacity="0.6" />
-      {/* Crispy snack shape with crunchy ridges */}
-      <path d="M50 20 L78 68 C75 73 68 76 50 75 C32 76 25 73 22 68 Z" fill="#ffffff" />
-      <path d="M50 26 L72 65 C68 68 62 70 50 69 C38 70 32 68 28 65 Z" fill="#fef3c7" />
-      {/* Crunch ripples */}
-      <path d="M38 52 Q50 48 62 52" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      <path d="M42 60 Q50 57 58 60" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-      {/* Taste star sparks */}
-      <path d="M50 36 L52 42 L58 44 L52 46 L50 52 L48 46 L42 44 L48 42 Z" fill="#ea580c" />
-      {/* Fresh authenticity leaf badge */}
-      <path d="M74 22 C66 22 64 30 64 36 C70 36 78 34 78 26 Z" fill="url(#crunchzyGreen)" />
-      <path d="M68 32 Q72 27 75 24" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-    </svg>
+    <img
+      src="/crunchzy_logo_cropped.png"
+      onError={(e) => {
+        e.currentTarget.src = "/Crunchzy logo.png";
+      }}
+      alt="Crunchzy - Good Taste Travels"
+      style={{
+        height: `${height}px`,
+        width: 'auto',
+        maxWidth: '220px',
+        objectFit: 'contain',
+        display: 'block',
+      }}
+    />
   );
 }
 
@@ -992,46 +978,20 @@ function CrunchzyLogo({ size = 52 }) {
 function CrunchzyWatermark() {
   return (
     <div className="invoice-watermark" aria-hidden="true">
-      <svg viewBox="0 0 500 500" width="460" height="460" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="250" cy="250" r="235" stroke="#ea580c" strokeWidth="6" strokeDasharray="14 10" />
-        <circle cx="250" cy="250" r="218" stroke="#047857" strokeWidth="3" />
-        <circle cx="250" cy="250" r="170" stroke="#d97706" strokeWidth="2" strokeDasharray="6 6" />
-
-        <defs>
-          <path id="watermarkTopArc" d="M 65,250 A 185,185 0 0,1 435,250" />
-          <path id="watermarkBottomArc" d="M 435,250 A 185,185 0 0,1 65,250" />
-        </defs>
-
-        <text fill="#047857" fontSize="22" fontWeight="900" letterSpacing="6">
-          <textPath href="#watermarkTopArc" startOffset="50%" textAnchor="middle">
-            CRUNCHZY · CRISPY DELIGHTS
-          </textPath>
-        </text>
-
-        <text fill="#ea580c" fontSize="17" fontWeight="800" letterSpacing="4">
-          <textPath href="#watermarkBottomArc" startOffset="50%" textAnchor="middle">
-            ★ 100% AUTHENTIC QUALITY GUARANTEED ★
-          </textPath>
-        </text>
-
-        {/* Center Crunchzy Insignia */}
-        <g transform="translate(250, 240)">
-          <path d="M0 -65 L60 40 C52 50 36 56 0 54 C-36 56 -52 50 -60 40 Z" fill="#ea580c" opacity="0.3" />
-          <path d="M0 -55 L50 35 C42 43 30 48 0 46 C-30 48 -42 43 -50 35 Z" fill="#f59e0b" opacity="0.25" />
-          <text y="8" textAnchor="middle" fill="#047857" fontSize="42" fontWeight="900" letterSpacing="4" fontFamily="'Montserrat', 'Inter', system-ui, sans-serif">
-            CRUNCHZY
-          </text>
-          <text y="32" textAnchor="middle" fill="#b45309" fontSize="13" fontWeight="800" letterSpacing="3">
-            WWW.CRUNCHZY.IN
-          </text>
-        </g>
-      </svg>
+      <img
+        src="/crunchzy_logo_cropped.png"
+        onError={(e) => {
+          e.currentTarget.src = "/Crunchzy logo.png";
+        }}
+        alt=""
+        className="inv-watermark-img"
+      />
     </div>
   );
 }
 
 /**
- * Enterprise Billing Slip / Tax Invoice Modal (Printable, Professional & Colorful)
+ * Enterprise Billing Slip / Invoice Modal (Printable, Professional & Colorful)
  */
 function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) {
   const { data } = useApp();
@@ -1063,9 +1023,9 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
     : (order.customer || 'Customer');
 
   return (
-    <Modal title={`Tax Invoice / Customer Bill #${order.id}`} onClose={onClose} width={820}>
+    <Modal title={`Invoice #${order.id}`} onClose={onClose} width={840}>
       <div className="invoice-container">
-        {/* Subtle Background Watermark */}
+        {/* Subtle Background Watermark with Official Crunchzy Logo */}
         <CrunchzyWatermark />
 
         {/* Professional Colorful Invoice Header */}
@@ -1085,29 +1045,39 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           }}
         >
           {/* Brand Identity & Contact Links */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <CrunchzyLogo size={56} />
+          <div style={{ flex: '1', minWidth: '320px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <CrunchzyLogo height={62} />
               <div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#0f2a1c', margin: 0, letterSpacing: '-0.02em' }}>
-                    CRUNCHZY
-                  </h1>
-                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#d97706', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#fef3c7', padding: '2px 8px', borderRadius: '4px' }}>
-                    Taste The Crunch
+                <p style={{ margin: '0', fontSize: '13px', color: '#1e293b', fontWeight: '600' }}>
+                  Authentic Maharashtrian Snacks & Namkeen
+                </p>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '5px',
+                    background: '#f8fafc',
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <img
+                    src="/fssai_logo.png"
+                    alt="FSSAI"
+                    style={{ height: '22px', width: 'auto', objectFit: 'contain' }}
+                  />
+                  <span style={{ fontSize: '11px', fontWeight: '700', color: '#166534', letterSpacing: '0.04em' }}>
+                    Food Safety Certified
                   </span>
                 </div>
-                <p style={{ margin: '3px 0 0', fontSize: '13px', color: '#334155', fontWeight: '500' }}>
-                  Authentic Maharashtrian Snacks, Chakli & Namkeen Manufacturer
-                </p>
-                <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#64748b' }}>
-                  The Maharashtra Foods · GSTIN: <b>27AABCT1234F1Z5</b> · FSSAI Lic. No: <b>11521034000452</b>
-                </p>
               </div>
             </div>
 
             {/* Direct Web, Insta, Email Contact Bar */}
-            <div className="inv-contact-bar">
+            <div className="inv-contact-bar" style={{ marginTop: '12px' }}>
               <a
                 href="https://www.crunchzy.in"
                 target="_blank"
@@ -1115,7 +1085,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 className="inv-contact-pill web"
                 title="Visit Crunchzy Official Website"
               >
-                <Icon name="globe" size={14} />
+                <img src="/web.jpg" alt="Web" className="inv-icon" />
                 <span>www.crunchzy.in</span>
               </a>
               <a
@@ -1125,7 +1095,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 className="inv-contact-pill insta"
                 title="Follow Crunchzy on Instagram"
               >
-                <Icon name="instagram" size={14} />
+                <img src="/instagram.jpg" alt="Instagram" className="inv-icon" />
                 <span>crunchzy.in</span>
               </a>
               <a
@@ -1133,31 +1103,31 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 className="inv-contact-pill mail"
                 title="Email Crunchzy Customer Support"
               >
-                <Icon name="mail" size={14} />
+                <img src="/mail.jpg" alt="Email" className="inv-icon" />
                 <span>contactus@crunchzy.in</span>
               </a>
             </div>
           </div>
 
-          {/* Right: Tax Invoice Badge & Number */}
-          <div style={{ textAlign: 'right' }}>
+          {/* Right: Invoice Badge & Number */}
+          <div style={{ textAlign: 'right', minWidth: '180px' }}>
             <span
               style={{
                 display: 'inline-block',
                 background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
                 color: '#ffffff',
-                padding: '6px 14px',
+                padding: '6px 16px',
                 borderRadius: '6px',
                 fontWeight: '800',
                 fontSize: '13px',
-                letterSpacing: '0.05em',
+                letterSpacing: '0.08em',
                 marginBottom: '6px',
                 boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
               }}
             >
-              ORIGINAL TAX INVOICE
+              INVOICE
             </span>
-            <div style={{ fontSize: '18px', fontWeight: '800', color: '#064e3b' }}>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#064e3b' }}>
               #{order.id}
             </div>
             <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
@@ -1165,7 +1135,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             </div>
             <div style={{ marginTop: '5px' }}>
               <span className="badge" style={{ background: order.type === 'Wholesale' ? '#ecfdf5' : '#eff6ff', color: order.type === 'Wholesale' ? '#047857' : '#1d4ed8', border: '1px solid currentColor', fontSize: '11px', padding: '2px 8px' }}>
-                {order.type === 'Wholesale' ? 'Wholesale Commercial Memo' : 'Retail Customer Bill'}
+                {order.type === 'Wholesale' ? 'Wholesale Invoice' : 'Retail Invoice'}
               </span>
             </div>
           </div>
@@ -1215,19 +1185,17 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
         {/* Customer & Order Metadata Grid */}
         <div className="inv-meta-grid">
           <div className="inv-meta-card customer">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <span style={{ color: '#059669' }}><Icon name="user" size={16} /></span>
+            <div style={{ marginBottom: '6px' }}>
               <small style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '700', color: '#047857', fontSize: '11px' }}>
                 Billed To (Customer Details)
               </small>
             </div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>
               {customerName}
             </div>
             {order.phone && (
-              <div style={{ fontSize: '13px', color: '#334155', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <Icon name="phone" size={13} />
-                <span><b>Phone:</b> {order.phone}</span>
+              <div style={{ fontSize: '13px', color: '#334155', marginTop: '3px' }}>
+                <b>Phone:</b> {order.phone}
               </div>
             )}
             {order.address && (
@@ -1243,10 +1211,9 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           </div>
 
           <div className="inv-meta-card details">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-              <span style={{ color: '#d97706' }}><Icon name="truck" size={16} /></span>
+            <div style={{ marginBottom: '6px' }}>
               <small style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '700', color: '#b45309', fontSize: '11px' }}>
-                Order & Delivery Target
+                Order & Delivery Details
               </small>
             </div>
             <div style={{ fontSize: '14px', color: '#1e293b' }}>
@@ -1327,7 +1294,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           </table>
         </div>
 
-        {/* Invoice Summary & Grand Total Box */}
+        {/* Invoice Summary & Grand Total Box (No Tax / GST) */}
         <div className="inv-summary-box">
           <div style={{ flex: '1', maxWidth: '58%' }}>
             <div style={{ display: 'flex', gap: '16px', marginBottom: '10px', fontSize: '13px' }}>
@@ -1347,10 +1314,27 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               </div>
             )}
 
-            <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.5', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <b style={{ color: '#047857' }}>✨ Crunchzy Freshness & Quality Promise:</b>
-              <br />
-              All snack batches are hygienically packed with sealed freshness. Store in an airtight container in a cool, dry place. Best before 90 days from packaging.
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                background: '#f8fafc',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <img
+                src="/fssai_logo.png"
+                alt="FSSAI"
+                style={{ height: '26px', width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+              />
+              <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.4' }}>
+                <b style={{ color: '#047857' }}>✨ 100% Freshness & Quality Promise:</b>
+                <br />
+                All snacks hygienically prepared and sealed for long-lasting crunch. Store in an airtight container in a cool, dry place.
+              </div>
             </div>
           </div>
 
@@ -1362,10 +1346,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', color: '#475569' }}>
               <span>Packaging & Handling:</span>
               <b style={{ color: '#059669' }}>FREE</b>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '12px', color: '#64748b' }}>
-              <span>Taxes (GST 5%):</span>
-              <span>All Taxes Included</span>
             </div>
 
             <div className="inv-total-highlight">
@@ -1382,27 +1362,43 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
         {/* Colorful Trust & Contact Footer */}
         <div className="inv-footer-strip">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: '800', color: '#0f2a1c', fontSize: '13px' }}>Crunchzy Snacks</span>
               <span style={{ color: '#cbd5e1' }}>•</span>
-              <a href="https://www.crunchzy.in" target="_blank" rel="noreferrer" style={{ color: '#047857', textDecoration: 'none', fontWeight: '600' }}>
-                www.crunchzy.in
+              <a
+                href="https://www.crunchzy.in"
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#047857', textDecoration: 'none', fontWeight: '600' }}
+              >
+                <img src="/web.jpg" alt="" className="inv-icon" />
+                <span>www.crunchzy.in</span>
               </a>
               <span style={{ color: '#cbd5e1' }}>•</span>
-              <a href="https://instagram.com/crunchzy.in" target="_blank" rel="noreferrer" style={{ color: '#be123c', textDecoration: 'none', fontWeight: '600' }}>
-                insta: crunchzy.in
+              <a
+                href="https://instagram.com/crunchzy.in"
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#be123c', textDecoration: 'none', fontWeight: '600' }}
+              >
+                <img src="/instagram.jpg" alt="" className="inv-icon" />
+                <span>crunchzy.in</span>
               </a>
               <span style={{ color: '#cbd5e1' }}>•</span>
-              <a href="mailto:contactus@crunchzy.in" style={{ color: '#1d4ed8', textDecoration: 'none', fontWeight: '600' }}>
-                contactus@crunchzy.in
+              <a
+                href="mailto:contactus@crunchzy.in"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: '#1d4ed8', textDecoration: 'none', fontWeight: '600' }}
+              >
+                <img src="/mail.jpg" alt="" className="inv-icon" />
+                <span>contactus@crunchzy.in</span>
               </a>
             </div>
-            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-              This is a computer-generated tax invoice issued by Crunchzy. Thank you for your order!
+            <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+              This is a computer-generated invoice issued by Crunchzy. Thank you for your order!
             </div>
           </div>
 
-          <div style={{ textAlign: 'right', minWidth: '160px' }}>
+          <div style={{ textAlign: 'right', minWidth: '170px' }}>
             <div style={{ height: '36px' }}></div>
             <div style={{ borderTop: '1px solid #94a3b8', paddingTop: '4px', fontSize: '11px', fontWeight: '700', color: '#334155' }}>
               Authorized Signatory
@@ -1445,7 +1441,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               onClick={handlePrint}
               style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', borderColor: '#047857', fontWeight: '700' }}
             >
-              Print Bill / Save PDF
+              Print Invoice / Save PDF
             </Button>
             <Button onClick={onClose}>
               Done
