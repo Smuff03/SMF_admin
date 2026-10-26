@@ -896,21 +896,21 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
             const p = products.find((prod) => prod.id === it.productId);
             return p && Number(p.stock || 0) < Number(it.totalWeightKg || 0);
           }) && (
-            <div
-              style={{
-                background: '#fef3c7',
-                border: '1px solid #fde68a',
-                borderRadius: '8px',
-                padding: '10px 14px',
-                marginTop: '12px',
-                fontSize: '12px',
-                color: '#92400e',
-                lineHeight: '1.4',
-              }}
-            >
-              ℹ️ <b>Stock Restock Reminder:</b> One or more items exceed current stock on hand. The order will be saved immediately with a recorded stock deficit, allowing you to add a purchase order afterwards to fulfill it.
-            </div>
-          )}
+              <div
+                style={{
+                  background: '#fef3c7',
+                  border: '1px solid #fde68a',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginTop: '12px',
+                  fontSize: '12px',
+                  color: '#92400e',
+                  lineHeight: '1.4',
+                }}
+              >
+                ℹ️ <b>Stock Restock Reminder:</b> One or more items exceed current stock on hand. The order will be saved immediately with a recorded stock deficit, allowing you to add a purchase order afterwards to fulfill it.
+              </div>
+            )}
         </div>
 
         {/* Note / Instructions */}
@@ -951,7 +951,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
 }
 
 /**
- * Crunchzy Brand Logo Component
+ * Crunchzy Brand Logo 
  */
 function CrunchzyLogo({ height = 60 }) {
   return (
