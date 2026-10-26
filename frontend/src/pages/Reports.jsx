@@ -23,7 +23,7 @@ export default function Reports() {
     const rows = data[kind];
     if (!rows) return toast('Still loading, try again in a moment', 'err');
     if (!rows.length) return toast(`No ${kind} to export yet`, 'err');
-    downloadCsv(`tmf-${kind}.csv`, rows.map(({ id, ...rest }) => ({ id, ...rest })));
+    downloadCsv(`crunchzy-${kind}.csv`, rows.map(({ id, ...rest }) => ({ id, ...rest })));
   };
 
   if (error) return <EmptyState title="Reports unavailable" text={`${error}. Check the connection settings.`} action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;

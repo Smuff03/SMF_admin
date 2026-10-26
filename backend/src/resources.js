@@ -50,7 +50,6 @@ async function bookSale(db, order, sign) {
 
 async function moveStock(db, product, delta, movement) {
   const stock = Math.round(((Number(product.stock) || 0) + delta) * 1000) / 1000;
-  if (stock < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
   await db.update('products', product.id, { stock });
   return db.create('inventory', { productId: product.id, productName: product.name, sku: product.sku, balance: stock, createdAt: now(), ...movement });
 }
@@ -236,7 +235,7 @@ export const resources = {
       retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
       costPrice: { type: 'number', nullable: true, min: 0, label: 'Cost price' },
-      stock: { type: 'number', min: 0, default: 0, label: 'Stock' },
+      stock: { type: 'number', default: 0, label: 'Stock' },
       active: { type: 'boolean', default: true, label: 'State' },
     },
     async prepare(db, d) {
@@ -283,7 +282,7 @@ export const resources = {
       if (d.quantity === 0) throw bad('Quantity cannot be 0');
       if (d.type !== 'Adjustment' && d.quantity < 0) throw bad('Quantity must be greater than 0');
       const delta = d.type === 'Stock out' ? -d.quantity : d.quantity;
-      if (product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
+      if (d.type === 'Stock out' && product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
       await db.update('products', product.id, { stock: Math.round((product.stock + delta) * 1000) / 1000 });
       return { ...d, productName: product.name, sku: product.sku, balance: Math.round((product.stock + delta) * 1000) / 1000, createdAt: now() };
     },

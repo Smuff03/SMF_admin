@@ -386,7 +386,21 @@ const columns = [
       <span className="muted" style={{ fontSize: '11px' }}>From purchases</span>
     )
   },
-  { label: 'Stock (Kg)', render: (r, c) => <span className={r.stock <= 0 ? 'neg' : r.stock <= c.threshold ? 'low' : 'strong'}><b>{formatWeight(r.stock)}</b></span> },
+  {
+    label: 'Stock (Kg)',
+    render: (r, c) => (
+      <div>
+        <span className={r.stock <= 0 ? 'neg' : r.stock <= c.threshold ? 'low' : 'strong'}>
+          <b>{formatWeight(r.stock)}</b>
+        </span>
+        {r.stock < 0 && (
+          <small className="neg block" style={{ fontSize: '10px', fontWeight: '600' }}>
+            Needs Purchase
+          </small>
+        )}
+      </div>
+    ),
+  },
   { label: 'State', render: (r) => <Badge>{r.active ? 'Active' : 'Inactive'}</Badge> },
 ];
 
@@ -534,8 +548,8 @@ export default function Products() {
       filters={[
         { key: 'category', label: 'All categories', options: opts(CATEGORIES), test: (r, v) => r.category === v },
         {
-          key: 'stock', label: 'Any stock level', panel: true, options: opts(['Low stock', 'In stock', 'Out of stock']),
-          test: (r, v, { threshold }) => (v === 'Low stock' ? r.stock > 0 && r.stock <= threshold : v === 'Out of stock' ? r.stock === 0 : r.stock > threshold)
+          key: 'stock', label: 'Any stock level', panel: true, options: opts(['Deficit', 'Out of stock', 'Low stock', 'In stock']),
+          test: (r, v, { threshold }) => (v === 'Deficit' ? r.stock < 0 : v === 'Out of stock' ? r.stock <= 0 : v === 'Low stock' ? r.stock > 0 && r.stock <= threshold : r.stock > threshold)
         },
         { key: 'state', label: 'Any state', panel: true, options: opts(['Active', 'Inactive']), test: (r, v) => r.active === (v === 'Active') },
       ]} />

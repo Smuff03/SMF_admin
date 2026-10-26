@@ -26,11 +26,13 @@ function Overview({ rows, look, threshold }) {
   const products = look.products || [];
   const week = rows.filter((r) => Date.now() - new Date(r.createdAt) < 7 * 864e5).length;
   const low = products.filter((p) => p.active && p.stock <= threshold).sort((a, b) => a.stock - b.stock);
+  const deficits = products.filter((p) => Number(p.stock || 0) < 0);
+  const outOfStock = products.filter((p) => Number(p.stock || 0) <= 0);
   const totalStockKg = products.reduce((a, p) => a + Number(p.stock || 0), 0);
   const cards = [
     ['Total Stock on Hand', formatWeight(totalStockKg), `${products.length} products active`],
     ['Low stock alerts', low.length, `At or below ${threshold} kg`],
-    ['Out of stock', products.filter((p) => Number(p.stock || 0) === 0).length, 'Needs immediate restock'],
+    ['Stock deficit / 0 Stock', outOfStock.length, deficits.length > 0 ? `${deficits.length} product(s) in deficit` : 'Needs immediate restock'],
     ['Movements this week', week, 'Orders, purchases & adjustments'],
   ];
   return (
@@ -49,8 +51,8 @@ function Overview({ rows, look, threshold }) {
               <div key={p.id} className="health-row">
                 <Tile>{initial(p.name)}</Tile>
                 <div className="grow"><b>{p.name}</b><small className="muted">{p.category}</small></div>
-                <div className="bar"><i style={{ width: `${Math.min(100, (p.stock / 50) * 100)}%` }} /></div>
-                <span className="low">{formatWeight(p.stock)} left</span>
+                <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, (p.stock / 50) * 100))}%`, background: p.stock < 0 ? '#dc2626' : undefined }} /></div>
+                <span className={p.stock < 0 ? 'neg' : 'low'}>{p.stock < 0 ? `${formatWeight(p.stock)} (Deficit)` : `${formatWeight(p.stock)} left`}</span>
                 <Badge>{stockLevel(p.stock, threshold)}</Badge>
               </div>
             ))}

@@ -85,7 +85,6 @@ async function nextNumber(tx, key, start) {
 async function moveStock(ctx, product, delta, movement, currentStock = null) {
   const baseStock = currentStock !== null ? currentStock : Number(product.stock) || 0;
   const stock = Math.round((baseStock + delta) * 1000) / 1000;
-  if (stock < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
   ctx.tx.update('products', product.id, { stock });
   const id = ctx.tx.newId('inventory');
   ctx.tx.set('inventory', id, { id, productId: product.id, productName: product.name, sku: product.sku, balance: stock, createdAt: ctx.now, ...movement });
@@ -272,7 +271,7 @@ export const resources = {
       retailPrice: { type: 'number', nullable: true, min: 0, label: 'Retail price' },
       wholesalePrice: { type: 'number', nullable: true, min: 0, label: 'Wholesale price' },
       costPrice: { type: 'number', nullable: true, min: 0, label: 'Cost price' },
-      stock: { type: 'number', min: 0, default: 0, label: 'Stock' },
+      stock: { type: 'number', default: 0, label: 'Stock' },
       active: { type: 'boolean', default: true, label: 'State' },
       images: { type: 'images', default: [], label: 'Images' },
     },
@@ -330,7 +329,7 @@ export const resources = {
       if (d.quantity === 0) throw bad('Quantity cannot be 0');
       if (d.type !== 'Adjustment' && d.quantity < 0) throw bad('Quantity must be greater than 0');
       const delta = d.type === 'Stock out' ? -d.quantity : d.quantity;
-      if (product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
+      if (d.type === 'Stock out' && product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
       ctx.tx.update('products', product.id, { stock: product.stock + delta });
       return { ...d, productName: product.name, sku: product.sku, balance: product.stock + delta, createdAt: ctx.now };
     },

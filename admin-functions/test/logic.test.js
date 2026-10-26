@@ -251,3 +251,53 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   assert.equal(s.col('storefrontOrders')['TMF-1002'], undefined);
 });
 
+test('order can be taken even when product is not in stock (0 stock or deficit), then replenished via purchase', async () => {
+  const s = store();
+  // 1. Create a product with 0 stock
+  const { id: pid } = await s.run({ resource: 'products', action: 'create', data: { name: 'Bhajani Chakli', category: 'Bhajani Chakli', stock: 0 } });
+  assert.equal(s.col('products')[pid].stock, 0);
+
+  // 2. Take an order for 2 packs of 500 gm = 1.0 kg and 1 pack of 1 kg = 1.0 kg (total 2 kg)
+  const { id: oid } = await s.run({
+    resource: 'orders', action: 'create', data: {
+      customer: 'Rajesh Sharma', type: 'Retail', amount: 600,
+      items: [
+        { productId: pid, productName: 'Bhajani Chakli', weightVariant: '500 gm', weightInKg: 0.5, quantity: 2, totalWeightKg: 1.0, price: 150, amount: 300 },
+        { productId: pid, productName: 'Bhajani Chakli', weightVariant: '1 kg', weightInKg: 1.0, quantity: 1, totalWeightKg: 1.0, price: 300, amount: 300 },
+      ]
+    }
+  });
+
+  // Order succeeds and stock drops into negative (-2 kg deficit)
+  assert.equal(s.col('products')[pid].stock, -2);
+  const moves = Object.values(s.col('inventory')).filter((m) => m.productId === pid);
+  assert.equal(moves.length, 2);
+  assert.equal(moves[1].balance, -2);
+
+  // 3. Admin updates product details (e.g. description) while stock is negative: succeeds without schema min error
+  await s.run({ resource: 'products', action: 'update', id: pid, data: { description: 'Crispy Maharashtrian snack' } });
+  assert.equal(s.col('products')[pid].description, 'Crispy Maharashtrian snack');
+  assert.equal(s.col('products')[pid].stock, -2);
+
+  // 4. Admin adds a purchase order for 10 kg to replenish the deficit
+  const { id: poid } = await s.run({
+    resource: 'purchases', action: 'create', data: {
+      supplier: 'Flour & Spices Ltd',
+      productId: pid,
+      quantity: 10,
+      unitCost: 110,
+      status: 'Ordered'
+    }
+  });
+  // Purchase is Ordered; stock remains -2 kg
+  assert.equal(s.col('products')[pid].stock, -2);
+
+  // 5. Purchase is marked Received -> Stock moves from -2 kg to +8 kg!
+  await s.run({ resource: 'purchases', action: 'update', id: poid, data: { status: 'Received' } });
+  assert.equal(s.col('products')[pid].stock, 8);
+  const inMoves = Object.values(s.col('inventory')).filter((m) => m.productId === pid && m.type === 'Stock in');
+  assert.equal(inMoves.length, 1);
+  assert.equal(inMoves[0].balance, 8);
+});
+
+

@@ -36,7 +36,7 @@ export default function Dashboard() {
   const labels = series.map((_, i) => String(new Date(Date.now() - (series.length - 1 - i) * 864e5).getDate()).padStart(2, '0'));
   const total = mix.retail + mix.wholesale;
   const retailPct = total ? Math.round((mix.retail / total) * 100) : 0;
-  const exportReport = () => downloadCsv('tmf-dashboard-report.csv', [
+  const exportReport = () => downloadCsv('Crunchzy_dashboard-report.csv', [
     ['Today\'s sales', k.todaySales], ['Monthly sales', k.monthSales], ['Total orders', k.totalOrders], ['Orders this week', k.weekOrders],
     ['Pending orders', k.pendingOrders], ['Retail sales', mix.retail], ['Wholesale sales', mix.wholesale],
   ].map(([metric, value]) => ({ metric, value })));

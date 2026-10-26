@@ -8,6 +8,7 @@ import { Button, ConfirmModal, EmptyState, FormModal, PageHeader } from '../comp
 export default function ResourcePage({
   resource, eyebrow, title, subtitle, addLabel, columns, fields, lookups = [], searchKeys = ['name'], placeholder = 'Search…',
   tabs, filters = [], banner, countNoun = 'records', above, expand, immutable, canEdit = () => true, noun = 'record', onBeforeSave, onRemoved,
+  initialModal = null,
 }) {
   const { data, errors, toast, setConnOpen, summary } = useApp();
   const rows = data[resource];
@@ -17,7 +18,7 @@ export default function ResourcePage({
   const [tab, setTab] = useState('All');
   const [fv, setFv] = useState({});
   const [panel, setPanel] = useState(false);
-  const [modal, setModal] = useState(null);
+  const [modal, setModal] = useState(initialModal);
   const [confirm, setConfirm] = useState(null);
   const [open, setOpen] = useState(null);
   const [bannerOn, setBannerOn] = useState(true);
@@ -30,6 +31,7 @@ export default function ResourcePage({
     look, rows: rows || [], threshold,
     update: (row, patch, message = 'Changes saved') => run(() => api.update(resource, row.id, patch), message),
     edit: (row) => setModal({ row }),
+    createWith: (initial) => setModal({ row: null, initial }),
     remove: (row) => setConfirm(row),
   };
 
@@ -90,7 +92,7 @@ export default function ResourcePage({
           <button className="icon-btn" onClick={() => setBannerOn(false)} aria-label="Dismiss"><Icon name="x" size={18} /></button>
         </div>
       )}
-      {rows && above?.({ rows, look, threshold })}
+      {rows && above?.({ rows, look, threshold, openCreate: (initial) => setModal({ row: null, initial }) })}
 
       {error ? (
         <EmptyState title={`${title} workspace unavailable`} text={`${error}. Check the connection settings.`}
@@ -130,7 +132,7 @@ export default function ResourcePage({
       )}
 
       {modal && (
-        <FormModal title={modal.row ? `Edit ${noun}` : addLabel} fields={fields(look)} initial={modal.row || {}} onClose={() => setModal(null)}
+        <FormModal title={modal.row ? `Edit ${noun}` : addLabel} fields={fields(look)} initial={modal.initial || modal.row || {}} onClose={() => setModal(null)}
           onSubmit={save} submitLabel={modal.row ? 'Save changes' : addLabel} />
       )}
       {confirm && (

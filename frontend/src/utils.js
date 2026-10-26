@@ -10,6 +10,7 @@ export const TONE = {
   Created: 'green', Updated: 'blue', Deleted: 'red',
   'Stock in': 'green', 'Stock out': 'amber', Adjustment: 'blue',
   Critical: 'red', Low: 'amber', Healthy: 'green',
+  Deficit: 'red', 'Out of stock': 'red',
 };
 
 export const inr = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
@@ -17,7 +18,7 @@ export const compact = (n) =>
   n >= 1e5 ? `₹${(n / 1e5).toFixed(2)}L` : n >= 1e3 ? `₹${+(n / 1e3).toFixed(1)}k` : `₹${Math.round(n)}`;
 export const kfmt = (v) => `₹${+(v / 1000).toFixed(1)}k`;
 export const initial = (s) => (s || '?').trim()[0].toUpperCase();
-export const stockLevel = (stock, low) => (stock <= low / 2 ? 'Critical' : stock <= low ? 'Low' : 'Healthy');
+export const stockLevel = (stock, low) => (stock < 0 ? 'Deficit' : stock === 0 ? 'Out of stock' : stock <= low / 2 ? 'Critical' : stock <= low ? 'Low' : 'Healthy');
 
 export const WEIGHT_VARIANTS = [
   { label: '200 gm', value: '200 gm', kg: 0.2 },
@@ -50,21 +51,25 @@ export function parseWeightKg(variant, customKg) {
 
 export function formatWeight(kg) {
   const n = Number(kg || 0);
-  if (n <= 0) return '0 kg';
-  if (n >= 1) {
-    const whole = Math.floor(n);
-    const grams = Math.round((n - whole) * 1000);
-    if (grams === 0) return `${whole} kg`;
-    return `${whole} kg ${grams} gm`;
+  if (n === 0) return '0 kg';
+  const prefix = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1) {
+    const whole = Math.floor(abs);
+    const grams = Math.round((abs - whole) * 1000);
+    if (grams === 0) return `${prefix}${whole} kg`;
+    return `${prefix}${whole} kg ${grams} gm`;
   }
-  return `${Math.round(n * 1000)} gm`;
+  return `${prefix}${Math.round(abs * 1000)} gm`;
 }
 
 export function formatWeightShort(kg) {
   const n = Number(kg || 0);
-  if (n <= 0) return '0 kg';
-  if (n % 1 === 0) return `${n} kg`;
-  return `${Number(n.toFixed(2))} kg`;
+  if (n === 0) return '0 kg';
+  const prefix = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs % 1 === 0) return `${prefix}${abs} kg`;
+  return `${prefix}${Number(abs.toFixed(2))} kg`;
 }
 
 export function getDeliveryStatus(order) {
@@ -73,7 +78,9 @@ export function getDeliveryStatus(order) {
   if (!deliveryDate) return { label: 'No schedule', tone: 'gray', text: 'Not set' };
 
   const parts = String(deliveryDate).split('-');
-  const target = new Date(Number(parts[0]), Number(parts[1] || 1) - 1, Number(parts[2] || 1), 23, 59, 59).getTime();
+  const localTarget = new Date(Number(parts[0]), Number(parts[1] || 1) - 1, Number(parts[2] || 1), 23, 59, 59, 999).getTime();
+  const utcTarget = new Date(`${deliveryDate}T23:59:59.999Z`).getTime();
+  const target = Math.max(localTarget, isNaN(utcTarget) ? localTarget : utcTarget);
   const formattedDate = new Date(deliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 
   if (status === 'Delivered') {

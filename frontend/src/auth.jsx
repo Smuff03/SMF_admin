@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
   const [state, setState] = useState({ status: firebaseConfigured ? 'loading' : 'unconfigured', user: null });
 
   const resolve = useCallback(async (user, force = false) => {
-    if (localStorage.getItem('tmf_demo_admin') === 'true') {
+    if (localStorage.getItem('Crunchzy_demo_admin') === 'true') {
       return setState({ status: 'admin', user: { email: 'admin@tmfoods.in', uid: 'demo-admin' } });
     }
     if (!user) return setState({ status: 'out', user: null });
@@ -52,7 +52,7 @@ export function AuthProvider({ children }) {
     signOut: () => {
       localStorage.removeItem('tmf_demo_admin');
       setState({ status: 'out', user: null });
-      if (auth?.currentUser) fbSignOut(auth).catch(() => {});
+      if (auth?.currentUser) fbSignOut(auth).catch(() => { });
     },
     enterDemoAdmin: () => {
       localStorage.setItem('tmf_demo_admin', 'true');
@@ -67,7 +67,7 @@ function Shell({ children }) {
   return (
     <div className="auth-page">
       <div className="card auth-card">
-        <div className="brand dark"><span className="logo">TM</span><div><b>TMF <span>BizHub</span></b><small>Admin workspace</small></div></div>
+        <div className="brand dark"><span className="logo">CA</span><div><b>Crunchzy <span>Buddy</span></b><small>Admin workspace</small></div></div>
         {children}
       </div>
     </div>
