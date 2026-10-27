@@ -68,7 +68,17 @@ export default function Orders() {
     });
     try {
       if (isEdit) {
-        await api.update('orders', orderModal.order.id, orderData);
+        const res = orderModal.order.source === 'Customer Portal' ? 'storefrontOrders' : 'orders';
+        try {
+          await api.update(res, orderModal.order.id, orderData);
+        } catch (err) {
+          const alt = res === 'orders' ? 'storefrontOrders' : 'orders';
+          try {
+            await api.update(alt, orderModal.order.id, orderData);
+          } catch {
+            throw err;
+          }
+        }
         toast(`Order #${orderModal.order.id} updated`);
       } else {
         const res = await api.create('orders', orderData);
@@ -465,9 +475,17 @@ function getProductVariantPrice(prod, variant, customKg, ordType) {
 function OrderBuilderModal({ order, products = [], customers = [], wholesalers = [], onClose, onSave, onDelete }) {
   const isEdit = Boolean(order?.id);
 
-  const [customer, setCustomer] = useState(order?.customer || '');
-  const [phone, setPhone] = useState(order?.phone || '');
-  const [email, setEmail] = useState(order?.email || '');
+  const [customer, setCustomer] = useState(
+    typeof order?.customer === 'object' && order?.customer
+      ? (order.customer.name || order.customer.fullName || order.customer.email || '')
+      : (order?.customer || '')
+  );
+  const [phone, setPhone] = useState(
+    order?.phone || (typeof order?.customer === 'object' && order?.customer?.phone) || ''
+  );
+  const [email, setEmail] = useState(
+    order?.email || (typeof order?.customer === 'object' && order?.customer?.email) || ''
+  );
   const [address, setAddress] = useState(order?.address || '');
   const [type, setType] = useState(order?.type || 'Retail');
   const [status, setStatus] = useState(order?.status || 'Pending');
@@ -483,14 +501,57 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
     return d.toISOString().split('T')[0];
   });
 
-  // Line items state
+  // Line items state with full property normalization
   const [items, setItems] = useState(() => {
-    if (order?.items && Array.isArray(order.items) && order.items.length) {
-      return order.items.map((it) => ({
-        ...it,
-        id: it.id || Math.random().toString(36).slice(2, 9),
-      }));
+    const rawItems = (order?.items && Array.isArray(order.items) && order.items.length)
+      ? order.items
+      : (order?.cart && Array.isArray(order.cart) && order.cart.length)
+        ? order.cart
+        : null;
+
+    if (rawItems) {
+      return rawItems.map((it) => {
+        const matchedProd = products.find((p) => p.id === (it.productId || it.id) || p.name === (it.productName || it.name)) || null;
+        const productId = matchedProd?.id || it.productId || it.id || '';
+        const productName = it.productName || it.name || matchedProd?.name || '';
+        const sku = it.sku || matchedProd?.sku || '';
+
+        let weightVariant = it.weightVariant || it.weight || it.packSize || matchedProd?.startingQuantity || matchedProd?.availableQuantities?.[0] || '500 gm';
+        const customKg = it.customKg || '';
+        const weightInKg = Number(it.weightInKg) || parseWeightKg(weightVariant, customKg);
+
+        const quantity = it.quantity !== undefined ? it.quantity : (it.qty !== undefined ? it.qty : 1);
+        const numQty = Math.max(1, parseInt(quantity, 10) || 1);
+
+        let price = Number(it.price !== undefined ? it.price : (it.rate !== undefined ? it.rate : it.unitPrice || 0));
+        if (!price && matchedProd) {
+          price = getProductVariantPrice(matchedProd, weightVariant, customKg, order?.type || type);
+        }
+        if (!price && it.amount && numQty > 0) {
+          price = Math.round(Number(it.amount) / numQty);
+        }
+
+        const totalWeightKg = Number(it.totalWeightKg) || (Math.round(weightInKg * numQty * 1000) / 1000);
+        const amount = Number(it.amount) > 0 && it.price === undefined
+          ? Number(it.amount)
+          : Math.round(price * numQty);
+
+        return {
+          id: it.id || Math.random().toString(36).slice(2, 9),
+          productId,
+          productName,
+          sku,
+          weightVariant,
+          customKg,
+          weightInKg,
+          quantity: numQty,
+          totalWeightKg,
+          price,
+          amount,
+        };
+      });
     }
+
     const defaultProd = products[0] || null;
     const defaultVariant = defaultProd?.startingQuantity || defaultProd?.availableQuantities?.[0] || '500 gm';
     const initialPrice = defaultProd ? getProductVariantPrice(defaultProd, defaultVariant, '', type) : 0;
@@ -542,9 +603,10 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
   const updateItem = (idx, field, val) => {
     setItems((cur) => {
       const next = [...cur];
-      const it = { ...next[idx], [field]: val };
+      const it = { ...next[idx] };
 
       if (field === 'productId') {
+        it.productId = val;
         const prod = products.find((p) => p.id === val);
         if (prod) {
           it.productName = prod.name;
@@ -554,19 +616,43 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
           it.weightInKg = parseWeightKg(defaultVariant, it.customKg);
           it.price = getProductVariantPrice(prod, defaultVariant, it.customKg, type);
         }
-      }
-
-      if (field === 'weightVariant' || field === 'customKg') {
+      } else if (field === 'weightVariant' || field === 'customKg') {
+        it[field] = val;
         const prod = products.find((p) => p.id === it.productId);
         const weightKg = parseWeightKg(it.weightVariant, it.customKg);
         it.weightInKg = weightKg;
         if (prod) {
           it.price = getProductVariantPrice(prod, it.weightVariant, it.customKg, type);
         }
+      } else if (field === 'price') {
+        it.price = val;
+      } else if (field === 'amount') {
+        it.amount = val;
+        const q = Number(it.quantity) || 1;
+        if (q > 0) {
+          it.price = Math.round((Number(val || 0) / q) * 100) / 100;
+        }
+      } else {
+        it[field] = val;
       }
 
-      it.totalWeightKg = Math.round((Number(it.weightInKg || 0) * Number(it.quantity || 1)) * 1000) / 1000;
-      it.amount = Math.round(Number(it.price || 0) * Number(it.quantity || 1));
+      // If price is missing or 0, fallback to product pricing
+      if (!Number(it.price) || Number(it.price) <= 0) {
+        const prod = products.find((p) => p.id === it.productId);
+        if (prod) {
+          it.price = getProductVariantPrice(prod, it.weightVariant, it.customKg, type);
+        }
+      }
+
+      // Allow empty string while actively typing, but calculate based on 0
+      const calcQty = it.quantity === '' ? 0 : Math.max(0, parseInt(it.quantity, 10) || 0);
+      const calcPrice = it.price === '' ? 0 : (Number(it.price) || 0);
+
+      it.totalWeightKg = Math.round((Number(it.weightInKg || 0) * calcQty) * 1000) / 1000;
+      if (field !== 'amount') {
+        it.amount = Math.round(calcPrice * calcQty);
+      }
+
       next[idx] = it;
       return next;
     });
@@ -578,10 +664,11 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
       cur.map((it) => {
         const prod = products.find((p) => p.id === it.productId);
         const price = getProductVariantPrice(prod, it.weightVariant, it.customKg, newType);
+        const q = it.quantity === '' ? 0 : (Number(it.quantity) || 1);
         return {
           ...it,
           price,
-          amount: Math.round(price * (Number(it.quantity) || 1)),
+          amount: Math.round(price * q),
         };
       })
     );
@@ -598,7 +685,8 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it.productId) return setError(`Item #${i + 1} product is missing`);
-      if (!it.quantity || it.quantity < 1) return setError(`Item #${i + 1} quantity must be at least 1`);
+      const q = Number(it.quantity);
+      if (!q || q < 1) return setError(`Item #${i + 1} quantity must be at least 1`);
     }
 
     setError('');
@@ -614,7 +702,17 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
         deliveryDate: deliveryDate || null,
         amount: totalAmount,
         note: note.trim(),
-        items: items.map(({ id, ...it }) => it),
+        items: items.map(({ id, ...it }) => {
+          const validQty = Math.max(1, parseInt(it.quantity, 10) || 1);
+          return {
+            ...it,
+            quantity: validQty,
+            qty: validQty, // Support both quantity and qty schemas
+            price: Number(it.price) || 0,
+            amount: Number(it.amount) || 0,
+            totalWeightKg: Number(it.totalWeightKg) || 0,
+          };
+        }),
       };
       await onSave(payload);
     } catch (err) {
@@ -725,145 +823,175 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
               const availStock = selectedProd ? Number(selectedProd.stock || 0) : 0;
               const reqWeight = Number(it.totalWeightKg) || 0;
               const deficit = Math.max(0, Math.round((reqWeight - availStock) * 1000) / 1000);
+              const qtyVal = it.quantity === '' ? '' : (Number(it.quantity) || 1);
 
               return (
-                <div
-                  key={it.id || idx}
-                  className="item-row"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 1.6fr 1fr 1fr 1.2fr auto',
-                    gap: '10px',
-                    alignItems: 'end',
-                    padding: '12px',
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                  }}
-                >
-                  <div className="field">
-                    <label style={{ fontSize: '12px' }}>Product</label>
-                    <select
-                      value={it.productId}
-                      onChange={(e) => updateItem(idx, 'productId', e.target.value)}
-                    >
-                      {products.map((p) => {
-                        const sKg = Number(p.stock || 0);
-                        const labelStock = sKg < 0 ? `Deficit: ${formatWeight(sKg)}` : sKg === 0 ? '0 kg left' : `${formatWeight(sKg)} left`;
-                        return (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({labelStock})
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <div style={{ marginTop: '2px' }}>
-                      {availStock <= 0 ? (
-                        <small className="neg" style={{ fontSize: '11px', display: 'block', lineHeight: '1.2' }}>
-                          ⚠️ Stock: {formatWeight(availStock)} · <b>Order allowed</b> (Add purchase to restock)
-                        </small>
-                      ) : deficit > 0 ? (
-                        <small style={{ color: '#d97706', fontSize: '11px', display: 'block', lineHeight: '1.2' }}>
-                          ⚠️ Stock: {formatWeight(availStock)} · Need {formatWeight(deficit)} more (Add purchase)
-                        </small>
-                      ) : (
-                        <small className="muted" style={{ fontSize: '11px', display: 'block' }}>
-                          Avail: {formatWeight(availStock)}
-                        </small>
-                      )}
+                <div key={it.id || idx} className="order-builder-row">
+                  {/* Row Header on mobile / Col 1 on desktop: Product Select */}
+                  <div className="order-builder-row-header">
+                    <div className="field" style={{ flex: 1, minWidth: 0 }}>
+                      <label style={{ fontSize: '12px' }}>Product</label>
+                      <select
+                        value={it.productId}
+                        onChange={(e) => updateItem(idx, 'productId', e.target.value)}
+                      >
+                        {products.map((p) => {
+                          const sKg = Number(p.stock || 0);
+                          const labelStock = sKg < 0 ? `Deficit: ${formatWeight(sKg)}` : sKg === 0 ? '0 kg left' : `${formatWeight(sKg)} left`;
+                          return (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({labelStock})
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <div style={{ marginTop: '2px' }}>
+                        {availStock <= 0 ? (
+                          <small className="neg" style={{ fontSize: '11px', display: 'block', lineHeight: '1.2' }}>
+                            ⚠️ Stock: {formatWeight(availStock)} · <b>Order allowed</b> (Add purchase to restock)
+                          </small>
+                        ) : deficit > 0 ? (
+                          <small style={{ color: '#d97706', fontSize: '11px', display: 'block', lineHeight: '1.2' }}>
+                            ⚠️ Stock: {formatWeight(availStock)} · Need {formatWeight(deficit)} more (Add purchase)
+                          </small>
+                        ) : (
+                          <small className="muted" style={{ fontSize: '11px', display: 'block' }}>
+                            Avail: {formatWeight(availStock)}
+                          </small>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="field">
-                    <label style={{ fontSize: '12px' }}>Pack Weight</label>
-                    <select
-                      value={it.weightVariant}
-                      onChange={(e) => updateItem(idx, 'weightVariant', e.target.value)}
-                    >
-                      {selectedProd?.availableQuantities?.length > 0 ? (
-                        <>
-                          <optgroup label="Available Sizes (This Product)">
-                            {selectedProd.availableQuantities.map((q) => {
-                              const vp = selectedProd.variantPricing?.find((v) => v.weight === q);
-                              const priceTag = vp ? (type === 'Wholesale' && vp.wholesalePrice ? ` (₹${vp.wholesalePrice})` : vp.retailPrice ? ` (₹${vp.retailPrice})` : '') : '';
-                              return (
-                                <option key={q} value={q}>
-                                  {q}{q === selectedProd.startingQuantity ? ' ★ Starting' : ''}{priceTag}
-                                </option>
-                              );
-                            })}
-                          </optgroup>
-                          <optgroup label="Other Standard Sizes">
-                            {WEIGHT_VARIANTS.filter((v) => !selectedProd.availableQuantities.includes(v.value)).map((v) => (
-                              <option key={v.value} value={v.value}>
-                                {v.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </>
-                      ) : (
-                        WEIGHT_VARIANTS.map((v) => (
-                          <option key={v.value} value={v.value}>
-                            {v.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    {it.weightVariant === 'Custom' && (
-                      <input
-                        type="number"
-                        step="0.05"
-                        placeholder="Kg"
-                        value={it.customKg || ''}
-                        onChange={(e) => updateItem(idx, 'customKg', e.target.value)}
-                        style={{ marginTop: '4px' }}
-                      />
-                    )}
-                  </div>
-
-                  <div className="field">
-                    <label style={{ fontSize: '12px' }}>Packs</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={it.quantity}
-                      onChange={(e) => updateItem(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label style={{ fontSize: '12px' }}>Rate (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={it.price}
-                      onChange={(e) => updateItem(idx, 'price', Math.max(0, parseFloat(e.target.value) || 0))}
-                    />
-                  </div>
-
-                  <div className="field">
-                    <label style={{ fontSize: '12px' }}>Total (₹)</label>
-                    <div style={{ padding: '10px 0', fontWeight: '700' }}>
-                      {inr(it.amount)}
-                      <small className="muted block" style={{ fontSize: '11px', fontWeight: '400' }}>
-                        {formatWeightShort(it.totalWeightKg)}
-                      </small>
-                    </div>
-                  </div>
-
-                  <div>
                     {items.length > 1 && (
                       <button
                         type="button"
                         className="icon-btn"
                         onClick={() => removeItemRow(idx)}
-                        style={{ color: '#dc2626' }}
+                        style={{ color: '#dc2626', marginTop: '22px', flexShrink: 0 }}
                         title="Remove item"
+                        aria-label="Remove item"
                       >
                         <Icon name="trash" size={18} />
                       </button>
                     )}
+                  </div>
+
+                  {/* 2-col on mobile: Pack Weight & Quantity Stepper */}
+                  <div className="order-builder-row-grid2">
+                    <div className="field">
+                      <label style={{ fontSize: '12px' }}>Pack Weight</label>
+                      <select
+                        value={it.weightVariant}
+                        onChange={(e) => updateItem(idx, 'weightVariant', e.target.value)}
+                      >
+                        {selectedProd?.availableQuantities?.length > 0 ? (
+                          <>
+                            <optgroup label="Available Sizes (This Product)">
+                              {selectedProd.availableQuantities.map((q) => {
+                                const vp = selectedProd.variantPricing?.find((v) => v.weight === q);
+                                const priceTag = vp ? (type === 'Wholesale' && vp.wholesalePrice ? ` (₹${vp.wholesalePrice})` : vp.retailPrice ? ` (₹${vp.retailPrice})` : '') : '';
+                                return (
+                                  <option key={q} value={q}>
+                                    {q}{q === selectedProd.startingQuantity ? ' ★ Starting' : ''}{priceTag}
+                                  </option>
+                                );
+                              })}
+                            </optgroup>
+                            <optgroup label="Other Standard Sizes">
+                              {WEIGHT_VARIANTS.filter((v) => !selectedProd.availableQuantities.includes(v.value)).map((v) => (
+                                <option key={v.value} value={v.value}>
+                                  {v.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </>
+                        ) : (
+                          WEIGHT_VARIANTS.map((v) => (
+                            <option key={v.value} value={v.value}>
+                              {v.label}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      {it.weightVariant === 'Custom' && (
+                        <input
+                          type="number"
+                          step="0.05"
+                          placeholder="Kg"
+                          value={it.customKg || ''}
+                          onChange={(e) => updateItem(idx, 'customKg', e.target.value)}
+                          style={{ marginTop: '4px' }}
+                        />
+                      )}
+                    </div>
+
+                    <div className="field">
+                      <label style={{ fontSize: '12px' }}>Packs (Quantity)</label>
+                      <div className="qty-stepper">
+                        <button
+                          type="button"
+                          className="qty-step-btn"
+                          onClick={() => {
+                            const cur = Number(it.quantity) || 1;
+                            updateItem(idx, 'quantity', Math.max(1, cur - 1));
+                          }}
+                          aria-label="Decrease quantity"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          className="qty-step-input"
+                          value={qtyVal}
+                          onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            updateItem(idx, 'quantity', isNaN(val) || val < 1 ? 1 : val);
+                          }}
+                          aria-label="Quantity in packs"
+                        />
+                        <button
+                          type="button"
+                          className="qty-step-btn"
+                          onClick={() => {
+                            const cur = Number(it.quantity) || 1;
+                            updateItem(idx, 'quantity', cur + 1);
+                          }}
+                          aria-label="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2-col on mobile: Rate & Total Amount */}
+                  <div className="order-builder-row-grid2">
+                    <div className="field">
+                      <label style={{ fontSize: '12px' }}>Rate (₹/pack)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={it.price === '' ? '' : (it.price ?? 0)}
+                        onChange={(e) => updateItem(idx, 'price', e.target.value)}
+                        onBlur={(e) => {
+                          const val = parseFloat(e.target.value);
+                          updateItem(idx, 'price', isNaN(val) || val < 0 ? 0 : val);
+                        }}
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label style={{ fontSize: '12px' }}>Item Total (₹)</label>
+                      <div style={{ padding: '8px 0', fontWeight: '800', color: '#065f46', fontSize: '16px' }}>
+                        {inr(it.amount)}
+                        <small className="muted block" style={{ fontSize: '11px', fontWeight: '400', color: '#64748b' }}>
+                          {formatWeightShort(it.totalWeightKg)}
+                        </small>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -1029,23 +1157,9 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
         <CrunchzyWatermark />
 
         {/* Professional Colorful Invoice Header */}
-        <div
-          className="inv-header"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            borderBottom: '3px solid #059669',
-            paddingBottom: '18px',
-            marginBottom: '20px',
-            position: 'relative',
-            zIndex: 1,
-            flexWrap: 'wrap',
-            gap: '16px',
-          }}
-        >
+        <div className="inv-header">
           {/* Brand Identity & Contact Links */}
-          <div style={{ flex: '1', minWidth: '320px' }}>
+          <div className="inv-header-brand" style={{ flex: '1', minWidth: '0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <CrunchzyLogo height={62} />
               <div>
@@ -1110,33 +1224,37 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           </div>
 
           {/* Right: Invoice Badge & Number */}
-          <div style={{ textAlign: 'right', minWidth: '180px' }}>
-            <span
-              style={{
-                display: 'inline-block',
-                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                color: '#ffffff',
-                padding: '6px 16px',
-                borderRadius: '6px',
-                fontWeight: '800',
-                fontSize: '13px',
-                letterSpacing: '0.08em',
-                marginBottom: '6px',
-                boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
-              }}
-            >
-              INVOICE
-            </span>
-            <div style={{ fontSize: '20px', fontWeight: '800', color: '#064e3b' }}>
-              #{order.id}
-            </div>
-            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-              Date: <b>{new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</b>
-            </div>
-            <div style={{ marginTop: '5px' }}>
-              <span className="badge" style={{ background: order.type === 'Wholesale' ? '#ecfdf5' : '#eff6ff', color: order.type === 'Wholesale' ? '#047857' : '#1d4ed8', border: '1px solid currentColor', fontSize: '11px', padding: '2px 8px' }}>
-                {order.type === 'Wholesale' ? 'Wholesale Invoice' : 'Retail Invoice'}
+          <div className="inv-header-meta" style={{ textAlign: 'right', minWidth: '0' }}>
+            <div>
+              <span
+                style={{
+                  display: 'inline-block',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  color: '#ffffff',
+                  padding: '6px 16px',
+                  borderRadius: '6px',
+                  fontWeight: '800',
+                  fontSize: '13px',
+                  letterSpacing: '0.08em',
+                  marginBottom: '6px',
+                  boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
+                }}
+              >
+                INVOICE
               </span>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#064e3b' }}>
+                #{order.id}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                Date: <b>{new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</b>
+              </div>
+              <div style={{ marginTop: '5px' }}>
+                <span className="badge" style={{ background: order.type === 'Wholesale' ? '#ecfdf5' : '#eff6ff', color: order.type === 'Wholesale' ? '#047857' : '#1d4ed8', border: '1px solid currentColor', fontSize: '11px', padding: '2px 8px' }}>
+                  {order.type === 'Wholesale' ? 'Wholesale Invoice' : 'Retail Invoice'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1238,12 +1356,22 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               <span className="badge" style={{ background: '#f1f5f9', color: '#334155' }}>
                 Status: <b>{order.status}</b>
               </span>
+              <Button
+                variant="ghost"
+                icon="pencil"
+                className="no-print"
+                onClick={onEdit}
+                style={{ padding: '3px 8px', fontSize: '11px', height: '26px' }}
+                title="Edit quantities or items in this order"
+              >
+                Edit Quantity
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Itemized Snack Bill Table */}
-        <div style={{ borderRadius: '10px', overflow: 'hidden', border: '1px solid #cbd5e1', marginBottom: '20px', position: 'relative', zIndex: 1 }}>
+        {/* Itemized Snack Bill: Table View (Desktop & Print) */}
+        <div className="inv-table-wrap">
           <table className="inv-table">
             <thead>
               <tr>
@@ -1259,7 +1387,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             <tbody>
               {items.length ? (
                 items.map((it, idx) => {
-                  const weightKg = Number(it.totalWeightKg) || (Number(it.weightInKg || 1) * Number(it.quantity || 1));
+                  const weightKg = Number(it.totalWeightKg) || (Number(it.weightInKg || 1) * Number(it.quantity || it.qty || 1));
                   return (
                     <tr key={idx}>
                       <td style={{ textAlign: 'center', fontWeight: '700', color: '#64748b' }}>{idx + 1}</td>
@@ -1294,10 +1422,59 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           </table>
         </div>
 
+        {/* Itemized Snack Bill: Mobile Cards View (Phones <= 640px) */}
+        <div className="inv-mobile-items no-print">
+          <div style={{ fontSize: '12px', fontWeight: '700', color: '#059669', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+            Bill Items ({items.length} {items.length === 1 ? 'item' : 'items'})
+          </div>
+          {items.length ? (
+            items.map((it, idx) => {
+              const weightKg = Number(it.totalWeightKg) || (Number(it.weightInKg || 1) * Number(it.quantity || it.qty || 1));
+              return (
+                <div key={idx} className="inv-mobile-item-card">
+                  <div className="inv-mobile-item-top">
+                    <div>
+                      <b style={{ color: '#0f2a1c', fontSize: '14px', display: 'block' }}>
+                        {it.productName || it.name || 'Crunchzy Snack Item'}
+                      </b>
+                      {it.sku && <small className="muted block" style={{ fontSize: '11px' }}>SKU: {it.sku}</small>}
+                    </div>
+                    <span className="inv-mobile-item-badge">
+                      {it.weightVariant || it.weight || 'Standard Pack'}
+                    </span>
+                  </div>
+                  <div className="inv-mobile-item-details">
+                    <div>
+                      <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                        {it.quantity || it.qty || 1} packs
+                      </span>
+                      <span className="muted" style={{ margin: '0 4px' }}>×</span>
+                      <span style={{ fontWeight: '600', color: '#334155' }}>{inr(it.price)}</span>
+                      <span className="muted block" style={{ fontSize: '11px', marginTop: '2px' }}>
+                        Weight: {formatWeight(weightKg)}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="muted block" style={{ fontSize: '11px' }}>Total</span>
+                      <b style={{ fontSize: '16px', color: '#064e3b', fontWeight: '800' }}>
+                        {inr(it.amount)}
+                      </b>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="inv-mobile-item-card" style={{ textAlign: 'center', padding: '16px' }}>
+              Standard order amount: <b>{inr(order.amount)}</b>
+            </div>
+          )}
+        </div>
+
         {/* Invoice Summary & Grand Total Box (No Tax / GST) */}
         <div className="inv-summary-box">
-          <div style={{ flex: '1', maxWidth: '58%' }}>
-            <div style={{ display: 'flex', gap: '16px', marginBottom: '10px', fontSize: '13px' }}>
+          <div className="inv-summary-left" style={{ flex: '1', minWidth: '0' }}>
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '10px', fontSize: '13px', flexWrap: 'wrap' }}>
               <div>
                 <span className="muted">Total Packs: </span>
                 <b style={{ color: '#0f172a' }}>{totalPacks} packs</b>
@@ -1338,7 +1515,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             </div>
           </div>
 
-          <div style={{ minWidth: '220px', textAlign: 'right' }}>
+          <div className="inv-summary-right" style={{ minWidth: '220px', textAlign: 'right' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', color: '#475569' }}>
               <span>Item Subtotal:</span>
               <b>{inr(order.amount)}</b>
@@ -1407,10 +1584,15 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
         </div>
 
         {/* Modal Action Controls (Hidden on Print) */}
-        <div className="modal-f no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Button icon="pencil" onClick={onEdit}>
-              Edit Order
+        <div className="inv-modal-actions no-print">
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Button
+              variant="primary"
+              icon="pencil"
+              onClick={onEdit}
+              style={{ background: '#166534', borderColor: '#166534', fontWeight: '700' }}
+            >
+              Edit Order & Quantities
             </Button>
             <Button
               variant="ghost"
@@ -1434,7 +1616,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               </Button>
             )}
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <Button
               variant="primary"
               icon="printer"

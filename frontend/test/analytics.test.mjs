@@ -72,5 +72,20 @@ const lateRes = getDeliveryStatus(lateOrder);
 assert.equal(lateRes.label, 'Late');
 assert.equal(lateRes.onTime, false);
 
+// Order item calculation tests (packs * rate = amount, packs * weight = totalKg)
+const calcItem = (rate, weightKg, qty) => ({
+  quantity: qty,
+  amount: Math.round(rate * qty),
+  totalWeightKg: Math.round(weightKg * qty * 1000) / 1000,
+});
+
+const it1 = calcItem(150, 0.5, 2); // 2 packs of 500g at ₹150
+assert.equal(it1.amount, 300);
+assert.equal(it1.totalWeightKg, 1.0);
+
+const it2 = calcItem(150, 0.5, 5); // 5 packs of 500g at ₹150
+assert.equal(it2.amount, 750);
+assert.equal(it2.totalWeightKg, 2.5);
+
 console.log('analytics & delivery status: all assertions passed');
 

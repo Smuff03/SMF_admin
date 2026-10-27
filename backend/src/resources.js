@@ -195,6 +195,35 @@ export const resources = {
             });
           }
         }
+      } else if (beforeSt !== 'Cancelled' && afterSt !== 'Cancelled' && after.items !== undefined) {
+        const beforeWeights = new Map();
+        for (const item of beforeItems) {
+          const pid = item.productId || item.id;
+          if (pid) beforeWeights.set(pid, (beforeWeights.get(pid) || 0) + extractItemWeightKg(item));
+        }
+        const afterWeights = new Map();
+        for (const item of afterItems) {
+          const pid = item.productId || item.id;
+          if (pid) afterWeights.set(pid, (afterWeights.get(pid) || 0) + extractItemWeightKg(item));
+        }
+        const allPids = new Set([...beforeWeights.keys(), ...afterWeights.keys()]);
+        for (const pid of allPids) {
+          const bW = beforeWeights.get(pid) || 0;
+          const aW = afterWeights.get(pid) || 0;
+          const diff = Math.round((bW - aW) * 1000) / 1000;
+          if (diff !== 0) {
+            const product = await db.get('products', pid);
+            if (product) {
+              const type = diff > 0 ? 'Stock in' : 'Stock out';
+              const absDiff = Math.abs(diff);
+              await moveStock(db, product, diff, {
+                type,
+                quantity: absDiff,
+                note: `Order ${after.id} Quantity Adjusted - Stock ${diff > 0 ? 'restored' : 'deducted'} (${absDiff} kg)`
+              });
+            }
+          }
+        }
       }
     },
     async afterDelete(db, row) {

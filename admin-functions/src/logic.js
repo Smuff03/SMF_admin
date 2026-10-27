@@ -229,6 +229,39 @@ export const resources = {
             stockTracker.set(productId, newStock);
           }
         }
+      } else if (beforeSt !== 'Cancelled' && afterSt !== 'Cancelled' && after.items !== undefined) {
+        const beforeWeights = new Map();
+        for (const item of beforeItems) {
+          const pid = item.productId || item.id;
+          if (pid) beforeWeights.set(pid, (beforeWeights.get(pid) || 0) + extractItemWeightKg(item));
+        }
+        const afterWeights = new Map();
+        for (const item of afterItems) {
+          const pid = item.productId || item.id;
+          if (pid) afterWeights.set(pid, (afterWeights.get(pid) || 0) + extractItemWeightKg(item));
+        }
+        const allPids = new Set([...beforeWeights.keys(), ...afterWeights.keys()]);
+        const stockTracker = new Map();
+        for (const pid of allPids) {
+          const bW = beforeWeights.get(pid) || 0;
+          const aW = afterWeights.get(pid) || 0;
+          const diff = Math.round((bW - aW) * 1000) / 1000;
+          if (diff !== 0) {
+            const product = await ctx.tx.get('products', pid);
+            if (product) {
+              const current = stockTracker.has(pid) ? stockTracker.get(pid) : Number(product.stock) || 0;
+              const type = diff > 0 ? 'Stock in' : 'Stock out';
+              const absDiff = Math.abs(diff);
+              const note = `Order ${after.id} Quantity Adjusted - Stock ${diff > 0 ? 'restored' : 'deducted'} (${absDiff} kg)`;
+              const newStock = await moveStock(ctx, product, diff, {
+                type,
+                quantity: absDiff,
+                note
+              }, current);
+              stockTracker.set(pid, newStock);
+            }
+          }
+        }
       }
     },
     async afterDelete(ctx, existing) {

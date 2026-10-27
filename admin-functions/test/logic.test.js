@@ -215,7 +215,22 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   await s.run({ resource: 'orders', action: 'update', id: o1, data: { status: 'Processing' } });
   assert.equal(s.col('products')[p1].stock, 48.8);
 
-  // 6. Delete order -> Restores 1.2 kg back to 50 kg
+  // 5b. Update item quantity: change 500 gm packs from 2 (1.0 kg) to 4 (2.0 kg), amount adjusts accordingly
+  // Stock decreases by another 1.0 kg (48.8 kg - 1.0 kg = 47.8 kg)
+  await s.run({
+    resource: 'orders', action: 'update', id: o1, data: {
+      amount: 750,
+      items: [
+        { productId: p1, productName: 'Chivda Special', weightVariant: '500 gm', weightInKg: 0.5, quantity: 4, totalWeightKg: 2.0, price: 150, amount: 600 },
+        { productId: p1, productName: 'Chivda Special', weightVariant: '200 gm', weightInKg: 0.2, quantity: 1, totalWeightKg: 0.2, price: 150, amount: 150 },
+      ]
+    }
+  });
+  assert.equal(s.col('products')[p1].stock, 47.8);
+  assert.equal(s.col('orders')[o1].amount, 750);
+  assert.equal(s.col('orders')[o1].items[0].quantity, 4);
+
+  // 6. Delete order -> Restores full updated 2.2 kg back to 50 kg
   await s.run({ resource: 'orders', action: 'delete', id: o1 });
   assert.equal(s.col('products')[p1].stock, 50);
 
