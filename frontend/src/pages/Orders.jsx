@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import Icon from '../components/Icon.jsx';
 import DataTable from '../components/DataTable.jsx';
 import { Badge, Button, ConfirmModal, EmptyState, Modal, PageHeader, StatusSelect } from '../components/ui.jsx';
+import { billFileName, customerNameOf, makeBillPdf, shareBillOnWhatsApp, downloadFile } from '../billShare.js';
 import { ORDER_STATUS, WEIGHT_VARIANTS, formatWeight, formatWeightShort, getDeliveryStatus, inr, parseWeightKg, when } from '../utils.js';
 
 export default function Orders() {
@@ -38,22 +39,34 @@ export default function Orders() {
     }
   };
 
+  // When an order is delivered, freeze today's purchase cost per Kg onto each line so the profit on
+  // this order never changes if supplier prices move later.
+  const withCostSnapshot = (items) =>
+    items.map((it) => {
+      if (Number(it.costPerKg) > 0) return it;
+      const p = products.find((pr) => pr.id === (it.productId || it.id));
+      const cost = Number(p?.costPrice) || 0;
+      return cost > 0 ? { ...it, costPerKg: cost } : it;
+    });
+
   const updateOrderStatus = async (order, status) => {
     try {
+      const patch = { status, orderStatus: status };
+      if (status === 'Delivered' && Array.isArray(order.items) && order.items.length) patch.items = withCostSnapshot(order.items);
       const res = order.source === 'Customer Portal' ? 'storefrontOrders' : 'orders';
       try {
-        await api.update(res, order.id, { status, orderStatus: status });
+        await api.update(res, order.id, patch);
       } catch (err) {
         const alt = res === 'orders' ? 'storefrontOrders' : 'orders';
         try {
-          await api.update(alt, order.id, { status, orderStatus: status });
+          await api.update(alt, order.id, patch);
         } catch {
           throw err;
         }
       }
       toast(`Order #${order.id} status updated to ${status}`);
       if (billModal && billModal.id === order.id) {
-        setBillModal((b) => ({ ...b, status, orderStatus: status }));
+        setBillModal((b) => ({ ...b, ...patch }));
       }
     } catch (e) {
       toast(e.message, 'err');
@@ -375,9 +388,51 @@ export default function Orders() {
 
           {/* Orders Table */}
           {visible.length ? (
-            <section className="card">
-              <DataTable columns={columns} rows={visible} />
-            </section>
+            <>
+              <section className="card orders-table-view">
+                <DataTable columns={columns} rows={visible} />
+              </section>
+
+              {/* Phones: one card per order instead of a wide table */}
+              <div className="orders-card-list">
+                {visible.map((r) => {
+                  const deficits = getOrderDeficitInfo(r);
+                  const needsRestock = deficits.length > 0 && r.status !== 'Cancelled';
+                  return (
+                    <div key={r.id} className="card order-card">
+                      <div className="order-card-top">
+                        <div className="order-card-who">
+                          <b>#{r.id}</b> <small className="muted">{r.source === 'Customer Portal' ? 'Portal' : 'Direct'}</small>
+                          <div className="order-card-name">{customerNameOf(r)}</div>
+                          {r.phone && <small className="muted">{r.phone}</small>}
+                        </div>
+                        <b className="order-card-amt">{inr(r.amount)}</b>
+                      </div>
+                      <div className="order-card-meta">
+                        <Badge>{r.type}</Badge>
+                        <span className="muted">{getOrderWeight(r)}</span>
+                        <span className="muted">{when(r.createdAt)}</span>
+                      </div>
+                      {needsRestock && (
+                        <button
+                          type="button"
+                          className="badge b-red"
+                          onClick={() => navigate(`/purchases?productId=${deficits[0].id}&quantity=${deficits[0].needed}&notes=Restock for Order #${r.id}`)}
+                        >
+                          Needs restock ({deficits.length}) · Add purchase
+                        </button>
+                      )}
+                      <div className="order-card-actions">
+                        <StatusSelect value={r.status} options={ORDER_STATUS} onChange={(status) => updateOrderStatus(r, status)} />
+                        <Button variant="ghost" icon="file" onClick={() => setBillModal(r)}>Bill</Button>
+                        <button className="icon-btn" onClick={() => setOrderModal({ order: r })} aria-label="Edit order"><Icon name="pencil" size={18} /></button>
+                        <button className="icon-btn" onClick={() => setConfirmDelete(r)} aria-label="Delete order"><Icon name="trash" size={18} /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           ) : (
             <EmptyState
               title={rawOrders.length ? 'No orders match filters' : 'No orders recorded yet'}
@@ -548,6 +603,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
           totalWeightKg,
           price,
           amount,
+          costPerKg: Number(it.costPerKg) > 0 ? Number(it.costPerKg) : undefined,
         };
       });
     }
@@ -711,6 +767,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
             price: Number(it.price) || 0,
             amount: Number(it.amount) || 0,
             totalWeightKg: Number(it.totalWeightKg) || 0,
+            costPerKg: Number(it.costPerKg) > 0 ? Number(it.costPerKg) : (status === 'Delivered' ? Number(products.find((p) => p.id === it.productId)?.costPrice) || undefined : undefined),
           };
         }),
       };
@@ -1135,8 +1192,52 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
   const totalPacks = items.reduce((sum, it) => sum + (Number(it.quantity || it.qty) || 1), 0);
   const deliveryInfo = getDeliveryStatus(order);
 
-  const handlePrint = () => {
-    window.print();
+  const { toast } = useApp();
+  const billRef = useRef(null);
+  const [pdf, setPdf] = useState(null); // { file, key }
+  const [busy, setBusy] = useState('');
+  const fileName = billFileName(order);
+  const billKey = `${order.id}|${order.status}|${order.amount}|${JSON.stringify(order.items || [])}`;
+
+  // Build the PDF in the background once the bill is on screen, so Share works instantly on tap
+  // (phones only allow the share sheet right after a tap).
+  useEffect(() => {
+    let live = true;
+    setPdf(null);
+    const t = setTimeout(async () => {
+      try {
+        const file = await makeBillPdf(billRef.current, fileName);
+        if (live) setPdf({ file, key: billKey });
+      } catch { /* the buttons below build it on demand and report any error */ }
+    }, 700);
+    return () => { live = false; clearTimeout(t); };
+  }, [billKey, fileName]);
+
+  const getFile = async () => (pdf && pdf.key === billKey ? pdf.file : makeBillPdf(billRef.current, fileName));
+
+  const handleWhatsApp = async () => {
+    setBusy('wa');
+    try {
+      const result = await shareBillOnWhatsApp(order, await getFile());
+      if (result === 'downloaded') toast(`${fileName} saved. Attach it in the WhatsApp chat that just opened.`);
+      else if (result === 'shared') toast('Bill shared');
+    } catch (e) {
+      toast(`Could not create the bill PDF: ${e.message}`, 'err');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const handleDownload = async () => {
+    setBusy('dl');
+    try {
+      downloadFile(await getFile());
+      toast(`${fileName} saved`);
+    } catch (e) {
+      toast(`Could not create the bill PDF: ${e.message}`, 'err');
+    } finally {
+      setBusy('');
+    }
   };
 
   const deficits = items
@@ -1152,7 +1253,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
 
   return (
     <Modal title={`Invoice #${order.id}`} onClose={onClose} width={840}>
-      <div className="invoice-container">
+      <div className="invoice-container" ref={billRef} data-bill-capture>
         {/* Subtle Background Watermark with Official Crunchzy Logo */}
         <CrunchzyWatermark />
 
@@ -1619,11 +1720,15 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <Button
               variant="primary"
-              icon="printer"
-              onClick={handlePrint}
-              style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', borderColor: '#047857', fontWeight: '700' }}
+              onClick={handleWhatsApp}
+              disabled={Boolean(busy)}
+              style={{ background: '#16a34a', borderColor: '#15803d', fontWeight: '700' }}
             >
-              Print Invoice / Save PDF
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 6, verticalAlign: '-3px' }}><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.4A10 10 0 1 0 12 2Z" /><path d="M8.5 8.5c0 3 3 6 6 6l1.5-1.5-2-1-1 .8c-1-.4-2-1.400-2.400-2.400l.8-1-1-2Z" /></svg>
+              {busy === 'wa' ? 'Preparing bill…' : 'Share on WhatsApp'}
+            </Button>
+            <Button icon="download" onClick={handleDownload} disabled={Boolean(busy)}>
+              {busy === 'dl' ? 'Preparing…' : 'Download PDF'}
             </Button>
             <Button onClick={onClose}>
               Done

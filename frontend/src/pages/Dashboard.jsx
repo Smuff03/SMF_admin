@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboard } from '../analytics.js';
 import { useApp } from '../context.jsx';
+import { profitSummary } from '../profit.js';
 import Icon from '../components/Icon.jsx';
 import DataTable from '../components/DataTable.jsx';
 import { AreaChart, Donut } from '../components/Charts.jsx';
@@ -25,6 +26,9 @@ export default function Dashboard() {
   const error = errors.orders || errors.products || '';
   const d = useMemo(() => (data.orders && data.products ? dashboard(data.orders, data.products) : null), [data.orders, data.products]);
 
+  // Profit from delivered orders, measured against what the stock cost to purchase (Kg x cost per Kg).
+  const profit = useMemo(() => (data.orders && data.products ? profitSummary(data.orders, data.products, 30) : null), [data.orders, data.products]);
+
   if (error) {
     return <EmptyState title="Dashboard unavailable" text={`${error}. Check the connection settings.`}
       action={<Button onClick={() => setConnOpen(true)}>Review connection settings</Button>} />;
@@ -37,7 +41,8 @@ export default function Dashboard() {
   const total = mix.retail + mix.wholesale;
   const retailPct = total ? Math.round((mix.retail / total) * 100) : 0;
   const exportReport = () => downloadCsv('Crunchzy_dashboard-report.csv', [
-    ['Today\'s sales', k.todaySales], ['Monthly sales', k.monthSales], ['Total orders', k.totalOrders], ['Orders this week', k.weekOrders],
+    ['Net profit (all delivered orders)', profit.total.profit], ['Profit last 30 days', profit.recent.profit], ['Profit margin % (all delivered)', profit.total.margin],
+    ['Purchase cost of delivered goods', profit.total.cost], ['Today\'s sales', k.todaySales], ['Monthly sales', k.monthSales], ['Total orders', k.totalOrders], ['Orders this week', k.weekOrders],
     ['Pending orders', k.pendingOrders], ['Retail sales', mix.retail], ['Wholesale sales', mix.wholesale],
   ].map(([metric, value]) => ({ metric, value })));
 
@@ -48,20 +53,38 @@ export default function Dashboard() {
     ['Pending orders', k.pendingOrders, <small className="up">Needs attention</small>, 'file', 'red'],
   ];
 
+  const tone = (v) => (v >= 0 ? 'up' : 'down');
+  const profitCards = [
+    ['Net profit', inr(profit.total.profit), <small className={tone(profit.total.profit)}>{profit.total.orders} delivered {profit.total.orders === 1 ? 'order' : 'orders'}</small>, 'rupee', profit.total.profit >= 0 ? 'green' : 'red'],
+    ['Profit · last 30 days', inr(profit.recent.profit), <small className={tone(profit.recent.profit)}>{profit.recent.margin}% margin</small>, 'rupee', 'blue'],
+    ['Profit margin', `${profit.total.margin}%`, <small className="muted">On {inr(profit.total.revenue)} delivered sales</small>, 'cart', 'orange'],
+    ['Purchase cost', inr(profit.total.cost), <small className="muted">Cost of goods delivered</small>, 'file', 'red'],
+  ];
+  const renderCards = (list) => list.map(([label, value, note, icon, t]) => (
+    <div key={label} className="card kpi">
+      <span className={`kicon t-${t}`}><Icon name={icon} size={20} /></span>
+      <div><span className="muted">{label}</span><b className="kv">{value}</b>{note}</div>
+    </div>
+  ));
+
   return (
     <>
       <PageHeader eyebrow={`OVERVIEW / ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }).toUpperCase()}`}
         title={`${greeting()}, Admin`} subtitle="Here’s the health of your snacks business today."
         action={<Button icon="download" onClick={exportReport}>Export report</Button>} />
 
-      <div className="kpis">
-        {cards.map(([label, value, note, icon, tone]) => (
-          <div key={label} className="card kpi">
-            <span className={`kicon t-${tone}`}><Icon name={icon} size={20} /></span>
-            <div><span className="muted">{label}</span><b className="kv">{value}</b>{note}</div>
-          </div>
-        ))}
-      </div>
+      <div className="kpis">{renderCards(cards)}</div>
+
+      <div className="kpis">{renderCards(profitCards)}</div>
+      {profit.skipped > 0 && (
+        <div className="banner">
+          <Icon name="box" size={22} />
+          <p>
+            <b>{profit.skipped} delivered {profit.skipped === 1 ? 'order is' : 'orders are'} not in the profit figures yet.</b>{' '}
+            Some items have no purchase cost. Record the purchase in <Link className="link" to="/purchases">Purchases</Link> and they are included automatically.
+          </p>
+        </div>
+      )}
 
       <div className="grid2 mb">
         <section className="card pad">

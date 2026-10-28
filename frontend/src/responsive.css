@@ -1,0 +1,344 @@
+/* Crunchzy admin: mobile layer.
+   Import AFTER your main stylesheet in main.jsx:   import './responsive.css';
+   Everything is inside media queries, so desktop is untouched. */
+
+/* The mobile order cards only exist on phones/small tablets */
+.orders-card-list {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .kpis {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .grid2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+
+    html,
+    body {
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    .card.pad {
+        padding: 14px;
+    }
+
+    .card-h,
+    .card-h.flat {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .kv {
+        font-size: 20px;
+    }
+
+    /* Page header: title, then actions on their own full-width row */
+    .btn-group {
+        flex-wrap: wrap;
+        width: 100%;
+    }
+
+    .btn-group>* {
+        flex: 1 1 140px;
+        justify-content: center;
+    }
+
+    /* Filters and search */
+    .toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .toolbar .search {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .toolbar .sel {
+        flex: 1 1 calc(50% - 8px);
+        min-width: 0;
+    }
+
+    .count-label {
+        flex: 1 1 100%;
+    }
+
+    .filter-panel {
+        flex-wrap: wrap;
+    }
+
+    .filter-panel .sel {
+        flex: 1 1 calc(50% - 8px);
+    }
+
+    /* Status tabs scroll sideways instead of wrapping into a pile */
+    .tabs {
+        display: flex;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    /* Other tables (products, purchases, people...) scroll inside their card */
+    .card {
+        max-width: 100%;
+    }
+
+    .card>table,
+    .card>div>table {
+        min-width: 640px;
+    }
+
+    .card:has(> table),
+    .card:has(> div > table) {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Orders: cards instead of a 9-column table */
+    .orders-table-view {
+        display: none;
+    }
+
+    .orders-card-list {
+        display: grid;
+        gap: 12px;
+    }
+
+    .order-card {
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+    }
+
+    .order-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .order-card-who {
+        min-width: 0;
+    }
+
+    .order-card-name {
+        font-weight: 700;
+        font-size: 16px;
+        overflow-wrap: anywhere;
+    }
+
+    .order-card-amt {
+        font-size: 18px;
+        white-space: nowrap;
+    }
+
+    .order-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 12px;
+        font-size: 13px;
+    }
+
+    .order-card .badge {
+        justify-self: start;
+        border: 0;
+        cursor: pointer;
+    }
+
+    .order-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .order-card-actions> :first-child {
+        flex: 1 1 100%;
+    }
+
+    .order-card-actions .btn {
+        flex: 1;
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .order-card-actions .icon-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Forms and the order / bill builder */
+    .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+        font-size: 16px;
+        min-height: 44px;
+    }
+
+    /* 16px stops iOS zooming on focus */
+    .order-builder-row {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .order-builder-row-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .order-builder-row-grid2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .qty-stepper {
+        display: flex;
+    }
+
+    .qty-step-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .qty-step-input {
+        min-width: 0;
+        width: 100%;
+        text-align: center;
+    }
+
+    .bill-summary-bar {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 8px;
+    }
+
+    /* Modal footers: stack, primary action on top */
+    .modal-f {
+        flex-direction: column-reverse;
+        align-items: stretch !important;
+        gap: 10px;
+    }
+
+    .modal-f>div {
+        flex-direction: column-reverse;
+    }
+
+    .modal-f .btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 46px;
+    }
+
+    /* Invoice */
+    .invoice-container {
+        padding: 14px;
+    }
+
+    .inv-header,
+    .inv-meta-grid,
+    .inv-summary-box,
+    .inv-footer-strip {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .inv-header-meta,
+    .inv-summary-right,
+    .inv-footer-strip>div {
+        text-align: left !important;
+        min-width: 0 !important;
+        width: 100%;
+    }
+
+    .inv-contact-bar {
+        flex-wrap: wrap;
+    }
+
+    .inv-modal-actions {
+        display: grid;
+        gap: 10px;
+    }
+
+    .inv-modal-actions>div {
+        display: grid !important;
+        grid-template-columns: 1fr;
+    }
+
+    .inv-modal-actions .btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 46px;
+    }
+}
+
+/* Phone-only invoice item cards replace the wide table (the PDF always uses the table) */
+@media (max-width: 640px) {
+    .inv-table-wrap {
+        display: none;
+    }
+
+    .inv-mobile-items {
+        display: grid;
+        gap: 10px;
+    }
+}
+
+@media (min-width: 641px) {
+    .inv-mobile-items {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .kpis {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .kpi {
+        padding: 14px;
+    }
+
+    .stock-row,
+    .health-row {
+        flex-wrap: wrap;
+    }
+}
+
+@media (hover: none) {
+
+    .icon-btn,
+    .btn,
+    .tab {
+        min-height: 40px;
+    }
+}
