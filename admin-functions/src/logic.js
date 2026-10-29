@@ -161,14 +161,17 @@ export const resources = {
           if (!productId) continue;
           const product = await ctx.tx.get('products', productId);
           if (product) {
-            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            // Stock is allowed to go negative (deficit). Orders are always accepted regardless of
+            // current stock level — the admin adds a purchase order to replenish later.
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : (Number(product.stock) || 0);
             const weightKg = extractItemWeightKg(item);
+            if (weightKg <= 0) continue; // skip items with no resolvable weight
             const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const custName = typeof order.customer === 'object' && order.customer ? (order.customer.name || order.customer.fullName || 'Customer') : (order.customer || 'Customer');
             const newStock = await moveStock(ctx, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${order.id} - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
+              note: `Order ${order.id} - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})${current <= 0 ? ' [deficit order]' : ''}`
             }, current);
             stockTracker.set(productId, newStock);
           }
@@ -362,7 +365,8 @@ export const resources = {
       if (d.quantity === 0) throw bad('Quantity cannot be 0');
       if (d.type !== 'Adjustment' && d.quantity < 0) throw bad('Quantity must be greater than 0');
       const delta = d.type === 'Stock out' ? -d.quantity : d.quantity;
-      if (d.type === 'Stock out' && product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
+      // Deficit stock is allowed — orders can be taken even when stock is 0 or below.
+      // The admin resolves the deficit by adding a purchase order to restock later.
       ctx.tx.update('products', product.id, { stock: product.stock + delta });
       return { ...d, productName: product.name, sku: product.sku, balance: product.stock + delta, createdAt: ctx.now };
     },
