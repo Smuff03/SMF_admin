@@ -58,8 +58,8 @@ export default function Layout() {
     <div className="app">
       <aside className={`side ${open ? 'open' : ''}`}>
         <div className="brand">
-          <span className="logo">TM</span>
-          <div><b>Crunchzy <span>BizHub</span></b><small>Admin workspace</small></div>
+          <span className="logo">CZ</span>
+          <div><b>Crunchzy <span>BizHub</span></b><small>Admin  workspace</small></div>
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="nav">
@@ -78,7 +78,7 @@ export default function Layout() {
         <div className="topbar">
           <div className="crumbs">
             <button className="icon-btn menu-btn" onClick={() => setOpen(true)} aria-label="Open menu"><Icon name="menu" /></button>
-            <span className="crumb-root">TMF BizHub</span><span className="sep crumb-root">/</span><b>{page}</b>
+            <span className="crumb-root">Crunchzy</span><span className="sep crumb-root">/</span><b>{page}</b>
           </div>
           <div className="top-actions">
             <Popover trigger={<Icon name="help" size={24} />} label="Help">

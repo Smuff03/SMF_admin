@@ -11,9 +11,11 @@ const columns = [
   { label: 'Quantity (Kg)', render: (r) => <b>{formatWeight(r.quantity)}</b> },
   { label: 'Cost / Kg', render: (r) => inr(r.unitCost) },
   { label: 'Total Amount', render: (r) => <b>{inr(r.amount)}</b> },
-  { label: 'Status', render: (r, c) => (r.status === 'Ordered'
-    ? <StatusSelect value={r.status} options={PO_STATUS} onChange={(status) => c.update(r, { status }, status === 'Received' ? 'Stock received: Quantity (Kg) added to Inventory & Customer Store' : 'Purchase updated')} />
-    : <Badge>{r.status}</Badge>) },
+  {
+    label: 'Status', render: (r, c) => (
+      <StatusSelect value={r.status} options={PO_STATUS} onChange={(status) => c.update(r, { status }, status === 'Received' ? 'Stock received: Quantity (Kg) added to Inventory & Customer Store' : 'Purchase updated')} />
+    )
+  },
   { label: 'Date', render: (r) => <span className="muted">{when(r.createdAt)}</span> },
 ];
 
@@ -34,7 +36,7 @@ const fields = ({ suppliers = [], products = [] }) => [
   },
   { name: 'quantity', label: 'Quantity (in Kg)', type: 'number', min: 0.1, step: '0.1', required: true, hint: 'Enter batch weight in Kg. Marking as Received increases stock, clears order deficits, and reflects in store.' },
   { name: 'unitCost', label: 'Unit cost per Kg (₹)', type: 'number', min: 0, step: '0.01', required: true, hint: 'Vendor purchase cost per Kg. Automatically sets the product cost price and profit margins across the store.' },
-  { name: 'status', label: 'Status', type: 'select', options: PO_STATUS, default: 'Ordered', hint: 'Marking as Received adds stock (Kg) to inventory and locks the purchase order.' },
+  { name: 'status', label: 'Status', type: 'select', options: PO_STATUS, default: 'Ordered', hint: 'Marking as Received adds stock (Kg) to inventory and updates product purchase cost.' },
   { name: 'notes', label: 'Notes & Invoice Ref', type: 'textarea', placeholder: 'Vendor bill number, batch code, order replenishment details…' },
 ];
 
@@ -164,7 +166,7 @@ export default function Purchases() {
       lookups={['suppliers', 'products']}
       searchKeys={['id', 'supplier', 'productName']}
       placeholder="Search purchases…"
-      canEdit={(r) => r.status === 'Ordered'}
+      canEdit={() => true}
       tabs={{ options: PO_STATUS, test: (r, t) => r.status === t }}
       above={(props) => <PurchasesOverview {...props} />}
       initialModal={initialModal}

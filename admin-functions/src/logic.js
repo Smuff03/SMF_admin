@@ -374,7 +374,6 @@ export const resources = {
 
   inventory: {
     entity: 'Inventory',
-    immutable: true,
     label: (r) => `${r.type} ${r.quantity} x ${r.productName}`,
     schema: {
       productId: { required: true, label: 'Product' },
@@ -392,6 +391,55 @@ export const resources = {
       if (d.type === 'Stock out' && product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
       ctx.tx.update('products', product.id, { stock: product.stock + delta });
       return { ...d, productName: product.name, sku: product.sku, balance: product.stock + delta, createdAt: ctx.now };
+    },
+    async beforeUpdate(ctx, existing, patch) {
+      const targetPid = patch.productId || existing.productId;
+      const product = await ctx.tx.get('products', targetPid);
+      if (!product) throw bad('Product not found');
+
+      const isOldOut = existing.type === 'Stock out' || existing.type === 'Used in Demo';
+      const oldDelta = isOldOut ? -Number(existing.quantity || 0) : Number(existing.quantity || 0);
+
+      const newType = patch.type || existing.type;
+      const newQty = patch.quantity !== undefined ? Number(patch.quantity) : Number(existing.quantity || 0);
+      const isNewOut = newType === 'Stock out' || newType === 'Used in Demo';
+      const newDelta = isNewOut ? -newQty : newQty;
+
+      if (targetPid === existing.productId) {
+        const diff = Math.round((newDelta - oldDelta) * 1000) / 1000;
+        if (diff !== 0) {
+          const newStock = Math.round((Number(product.stock || 0) + diff) * 1000) / 1000;
+          ctx.tx.update('products', product.id, { stock: newStock });
+          return {
+            ...patch,
+            productName: product.name,
+            sku: product.sku,
+            balance: newStock,
+          };
+        }
+      } else {
+        const oldProd = await ctx.tx.get('products', existing.productId);
+        if (oldProd) {
+          ctx.tx.update('products', oldProd.id, { stock: Math.round((Number(oldProd.stock || 0) - oldDelta) * 1000) / 1000 });
+        }
+        const newStock = Math.round((Number(product.stock || 0) + newDelta) * 1000) / 1000;
+        ctx.tx.update('products', product.id, { stock: newStock });
+        return {
+          ...patch,
+          productName: product.name,
+          sku: product.sku,
+          balance: newStock,
+        };
+      }
+      return patch;
+    },
+    async afterDelete(ctx, existing) {
+      const product = await ctx.tx.get('products', existing.productId);
+      if (product) {
+        const isOut = existing.type === 'Stock out' || existing.type === 'Used in Demo';
+        const delta = isOut ? -Number(existing.quantity || 0) : Number(existing.quantity || 0);
+        ctx.tx.update('products', product.id, { stock: Math.round((Number(product.stock || 0) - delta) * 1000) / 1000 });
+      }
     },
   },
 
@@ -418,21 +466,84 @@ export const resources = {
       if (row.status === 'Received') await receivePurchase(ctx, row);
     },
     async beforeUpdate(ctx, existing, patch) {
-      if (existing.status === 'Received') throw bad('Received purchases are locked');
       const next = { ...patch };
       if (patch.productId) {
         const product = await ctx.tx.get('products', patch.productId);
         if (!product) throw bad('Product not found');
         next.productName = product.name;
       }
-      next.amount = (patch.quantity ?? existing.quantity) * (patch.unitCost ?? existing.unitCost);
+      const qty = patch.quantity !== undefined ? Number(patch.quantity) : Number(existing.quantity);
+      const cost = patch.unitCost !== undefined ? Number(patch.unitCost) : Number(existing.unitCost);
+      next.amount = Math.round(qty * cost * 100) / 100;
       return next;
     },
     async afterUpdate(ctx, before, after) {
       if (after.productId && after.unitCost != null) {
         ctx.tx.update('products', after.productId, { costPrice: after.unitCost });
       }
-      if (before.status !== 'Received' && after.status === 'Received') await receivePurchase(ctx, after);
+
+      // 1. Was Received, still Received -> adjust stock for any quantity or product changes
+      if (before.status === 'Received' && after.status === 'Received') {
+        const sameProduct = before.productId === after.productId;
+        if (sameProduct) {
+          const diff = Math.round((Number(after.quantity) - Number(before.quantity)) * 1000) / 1000;
+          if (diff !== 0) {
+            const product = await ctx.tx.get('products', after.productId);
+            if (product) {
+              const type = diff > 0 ? 'Stock in' : 'Stock out';
+              await moveStock(ctx, product, diff, {
+                type,
+                quantity: Math.abs(diff),
+                note: `PO #${after.id} Quantity edited (${diff > 0 ? '+' : ''}${diff} kg)`
+              });
+            }
+          }
+        } else {
+          const oldProd = await ctx.tx.get('products', before.productId);
+          if (oldProd) {
+            await moveStock(ctx, oldProd, -Number(before.quantity), {
+              type: 'Stock out',
+              quantity: Number(before.quantity),
+              note: `PO #${after.id} Product changed - Stock removed`
+            });
+          }
+          const newProd = await ctx.tx.get('products', after.productId);
+          if (newProd) {
+            await moveStock(ctx, newProd, Number(after.quantity), {
+              type: 'Stock in',
+              quantity: Number(after.quantity),
+              note: `PO #${after.id} Product changed - Stock added`
+            });
+          }
+        }
+      }
+      // 2. Newly Received
+      else if (before.status !== 'Received' && after.status === 'Received') {
+        await receivePurchase(ctx, after);
+      }
+      // 3. Was Received, now un-received (Ordered or Cancelled)
+      else if (before.status === 'Received' && after.status !== 'Received') {
+        const product = await ctx.tx.get('products', before.productId);
+        if (product) {
+          await moveStock(ctx, product, -Number(before.quantity), {
+            type: 'Stock out',
+            quantity: Number(before.quantity),
+            note: `PO #${after.id} changed to ${after.status} - Stock reversed`
+          });
+        }
+      }
+    },
+    async afterDelete(ctx, existing) {
+      if (existing.status === 'Received') {
+        const product = await ctx.tx.get('products', existing.productId);
+        if (product) {
+          await moveStock(ctx, product, -Number(existing.quantity), {
+            type: 'Stock out',
+            quantity: Number(existing.quantity),
+            note: `PO #${existing.id} Deleted - Stock removed`
+          });
+        }
+      }
     },
   },
 

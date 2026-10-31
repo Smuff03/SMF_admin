@@ -77,11 +77,17 @@ test('inventory moves stock, records balance and rejects overdrawing', async () 
   assert.equal(s.col('products')[id].stock, 18);
   const bal = Object.values(s.col('inventory')).map((m) => m.balance).sort((a, b) => b - a);
   assert.deepEqual(bal, [40, 25, 20, 18]);
-  await assert.rejects(s.run({ resource: 'inventory', action: 'update', id: Object.keys(s.col('inventory'))[0], data: {} }), /cannot be edited/);
-  await assert.rejects(s.run({ resource: 'inventory', action: 'delete', id: Object.keys(s.col('inventory'))[0] }), /cannot be deleted/);
+
+  const firstInvId = Object.keys(s.col('inventory'))[0];
+  // Edit movement quantity from 10 to 15 -> stock increases by 5 (18 + 5 = 23)
+  await s.run({ resource: 'inventory', action: 'update', id: firstInvId, data: { quantity: 15 } });
+  assert.equal(s.col('products')[id].stock, 23);
+  // Delete movement -> reverses 15 kg -> stock decreases by 15 (23 - 15 = 8)
+  await s.run({ resource: 'inventory', action: 'delete', id: firstInvId });
+  assert.equal(s.col('products')[id].stock, 8);
 });
 
-test('receiving a purchase adds stock once and locks the purchase', async () => {
+test('receiving a purchase adds stock, and editing/deleting Received purchase reconciles stock', async () => {
   const s = store();
   const { id: pid } = await s.run(product());
   const { id: po } = await s.run({ resource: 'purchases', action: 'create', data: { supplier: 'Shivam', productId: pid, quantity: 100, unitCost: 38 } });
@@ -99,8 +105,22 @@ test('receiving a purchase adds stock once and locks the purchase', async () => 
   assert.equal(moves.length, 1);
   assert.equal(moves[0].note, 'Received against PO-3021');
 
-  await assert.rejects(s.run({ resource: 'purchases', action: 'update', id: po, data: { status: 'Cancelled' } }), /locked/);
-  assert.equal(s.col('products')[pid].stock, 150);
+  // Edit quantity on Received purchase from 120 to 140 -> stock increases by 20 (from 150 to 170)
+  await s.run({ resource: 'purchases', action: 'update', id: po, data: { quantity: 140 } });
+  assert.equal(s.col('products')[pid].stock, 170);
+  assert.equal(s.col('purchases')[po].amount, 140 * 38);
+
+  // Change status back to Cancelled -> reverses 140 kg stock (from 170 back to 30)
+  await s.run({ resource: 'purchases', action: 'update', id: po, data: { status: 'Cancelled' } });
+  assert.equal(s.col('products')[pid].stock, 30);
+
+  // Re-receive purchase -> adds 140 kg stock (from 30 back to 170)
+  await s.run({ resource: 'purchases', action: 'update', id: po, data: { status: 'Received' } });
+  assert.equal(s.col('products')[pid].stock, 170);
+
+  // Delete Received purchase -> removes 140 kg stock (from 170 back to 30)
+  await s.run({ resource: 'purchases', action: 'delete', id: po });
+  assert.equal(s.col('products')[pid].stock, 30);
 });
 
 test('a purchase created as Received adds stock immediately', async () => {

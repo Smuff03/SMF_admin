@@ -506,20 +506,26 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
       const projectedBalanceKg = Math.round((stockOnHand - neededForFutureDeliveryKg) * 1000) / 1000;
       const deficitKg = projectedBalanceKg < 0 ? Math.abs(projectedBalanceKg) : 0;
 
-      // Dispatched / Delivered fulfilled volume
-      let fulfilledKg = 0;
+      // Dispatched / Delivered fulfilled volume — split by status
+      let dispatchedKg = 0;
+      let deliveredKg = 0;
       for (const order of fulfilledOrders) {
         const items = getOrderItems(order);
+        const statusLower = String(order.status || '').toLowerCase().trim();
         for (const item of items) {
           const itemPid = item.productId || item.id;
           const matchesId = itemPid && String(itemPid) === String(p.id);
           const matchesName = item.productName && p.name && item.productName.trim().toLowerCase() === p.name.trim().toLowerCase();
           if (matchesId || matchesName) {
-            fulfilledKg += extractItemWeightKg(item);
+            const wt = extractItemWeightKg(item);
+            if (statusLower === 'dispatched') dispatchedKg += wt;
+            else if (statusLower === 'delivered') deliveredKg += wt;
           }
         }
       }
-      fulfilledKg = Math.round(fulfilledKg * 1000) / 1000;
+      dispatchedKg = Math.round(dispatchedKg * 1000) / 1000;
+      deliveredKg = Math.round(deliveredKg * 1000) / 1000;
+      const fulfilledKg = Math.round((dispatchedKg + deliveredKg) * 1000) / 1000;
 
       // Demo usage recorded for this product from movement logs
       const demoUsedKg = Math.round(
@@ -527,6 +533,9 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
           .filter((r) => r.type === 'Used in Demo' && (r.productId === p.id || r.productName === p.name))
           .reduce((sum, r) => sum + Number(r.quantity || 0), 0) * 1000
       ) / 1000;
+
+      // Total Used = Dispatched + Delivered + Demo (only these 3 statuses count as used)
+      const totalUsedKg = Math.round((dispatchedKg + deliveredKg + demoUsedKg) * 1000) / 1000;
 
       return {
         product: p,
@@ -543,8 +552,11 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
         earliestDeliveryOrder,
         projectedBalanceKg,
         deficitKg,
+        dispatchedKg,
+        deliveredKg,
         fulfilledKg,
         demoUsedKg,
+        totalUsedKg,
         hasShortage: deficitKg > 0,
         hasPendingOrders: neededForFutureDeliveryKg > 0,
         isCovered: projectedBalanceKg >= 0 && (neededForFutureDeliveryKg > 0 || stockOnHand > 0),
@@ -565,9 +577,13 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
     const totalNeededFutureKg = Math.round(productStats.reduce((s, p) => s + p.neededForFutureDeliveryKg, 0) * 1000) / 1000;
     const totalDeficitKg = Math.round(productStats.reduce((s, p) => s + p.deficitKg, 0) * 1000) / 1000;
     const totalFulfilledKg = Math.round(productStats.reduce((s, p) => s + p.fulfilledKg, 0) * 1000) / 1000;
+    const totalDispatchedKg = Math.round(productStats.reduce((s, p) => s + p.dispatchedKg, 0) * 1000) / 1000;
+    const totalDeliveredKg = Math.round(productStats.reduce((s, p) => s + p.deliveredKg, 0) * 1000) / 1000;
     const totalDemoUsedKg = Math.round(
       rows.filter((r) => r.type === 'Used in Demo').reduce((s, r) => s + Number(r.quantity || 0), 0) * 1000
     ) / 1000;
+    // Total Used Products = Dispatched + Delivered + Demo ONLY (no other status counts as used)
+    const totalUsedProductsKg = Math.round((totalDispatchedKg + totalDeliveredKg + totalDemoUsedKg) * 1000) / 1000;
     const shortageCount = productStats.filter((p) => p.hasShortage).length;
 
     return {
@@ -576,7 +592,10 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
       totalNeededFutureKg,
       totalDeficitKg,
       totalFulfilledKg,
+      totalDispatchedKg,
+      totalDeliveredKg,
       totalDemoUsedKg,
+      totalUsedProductsKg,
       futureOrdersCount: futureOrders.length,
       fulfilledOrdersCount: fulfilledOrders.length,
       shortageCount,
@@ -589,7 +608,10 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
     totalNeededFutureKg,
     totalDeficitKg,
     totalFulfilledKg,
+    totalDispatchedKg,
+    totalDeliveredKg,
     totalDemoUsedKg,
+    totalUsedProductsKg,
     futureOrdersCount,
     fulfilledOrdersCount,
     shortageCount,
@@ -657,13 +679,15 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
         </div>
 
         <div className="card kpi stack">
-          <span className="muted">Dispatched & Demo Deducted</span>
+          <span className="muted">Total Products Used</span>
           <b className="kv" style={{ color: '#059669' }}>
-            {formatWeight(totalFulfilledKg)}
+            {formatWeight(totalUsedProductsKg)}
           </b>
           <small className="muted">
-            {fulfilledOrdersCount} orders fulfilled
-            {totalDemoUsedKg > 0 && ` · ${formatWeight(totalDemoUsedKg)} demo`}
+            {formatWeight(totalDispatchedKg)} dispatched · {formatWeight(totalDeliveredKg)} delivered · {formatWeight(totalDemoUsedKg)} demo
+          </small>
+          <small className="muted" style={{ fontSize: '10px', marginTop: '2px' }}>
+            Only Dispatched, Delivered & Demo count as used
           </small>
         </div>
       </div>
@@ -796,19 +820,20 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
           <table>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <th style={{ width: '250px' }}>Product</th>
-                <th>Stock on Hand (Remaining)</th>
+                <th style={{ width: '220px' }}>Product</th>
+                <th>Stock on Hand</th>
+                <th>Used Quantity</th>
                 <th>Needed for Future Delivery</th>
                 <th>Projected Net Balance</th>
                 <th>Fulfillment Status</th>
                 <th>Earliest Due Date</th>
-                <th className="end" style={{ width: '220px' }}>Action</th>
+                <th className="end" style={{ width: '200px' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: '#64748b' }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: '#64748b' }}>
                     No products match the selected filter.
                   </td>
                 </tr>
@@ -832,7 +857,6 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                             <b>{p.name}</b>
                             <small className="muted block">
                               {p.sku} · {p.category}
-                              {p.demoUsedKg > 0 && <span style={{ color: '#7e22ce', marginLeft: '6px' }}>({formatWeight(p.demoUsedKg)} demo)</span>}
                             </small>
                           </div>
                         </div>
@@ -855,7 +879,27 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                         </div>
                       </td>
 
-                      {/* 3. Needed for Future Delivery */}
+                      {/* 3. Used Quantity (Dispatched + Delivered + Demo ONLY) */}
+                      <td>
+                        {p.totalUsedKg > 0 ? (
+                          <div>
+                            <b style={{ color: '#059669', fontSize: '14px' }}>
+                              {formatWeight(p.totalUsedKg)}
+                            </b>
+                            <small className="muted block" style={{ fontSize: '10px', marginTop: '2px', lineHeight: '1.3' }}>
+                              {p.dispatchedKg > 0 && <span>{formatWeightShort(p.dispatchedKg)} disp</span>}
+                              {p.dispatchedKg > 0 && (p.deliveredKg > 0 || p.demoUsedKg > 0) && ' · '}
+                              {p.deliveredKg > 0 && <span>{formatWeightShort(p.deliveredKg)} del</span>}
+                              {p.deliveredKg > 0 && p.demoUsedKg > 0 && ' · '}
+                              {p.demoUsedKg > 0 && <span style={{ color: '#7e22ce' }}>{formatWeightShort(p.demoUsedKg)} demo</span>}
+                            </small>
+                          </div>
+                        ) : (
+                          <span className="muted" style={{ fontSize: '13px' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* 4. Needed for Future Delivery */}
                       <td>
                         {p.futureOrderCount > 0 ? (
                           <div>
@@ -879,7 +923,7 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                         )}
                       </td>
 
-                      {/* 4. Projected Net Balance */}
+                      {/* 5. Projected Net Balance */}
                       <td>
                         {p.projectedBalanceKg < 0 ? (
                           <b className="neg" style={{ fontSize: '14px' }}>
@@ -895,7 +939,7 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                         </small>
                       </td>
 
-                      {/* 5. Fulfillment Status */}
+                      {/* 6. Fulfillment Status */}
                       <td>
                         {p.hasShortage ? (
                           <span
@@ -941,7 +985,7 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                         )}
                       </td>
 
-                      {/* 6. Earliest Due Date */}
+                      {/* 7. Earliest Due Date */}
                       <td>
                         {p.earliestDeliveryDate ? (
                           <div>
@@ -971,7 +1015,7 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                         )}
                       </td>
 
-                      {/* 7. Action */}
+                      {/* 8. Action */}
                       <td className="end">
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
                           {p.hasShortage && (
@@ -1080,7 +1124,6 @@ export default function Inventory() {
         addLabel="Add movement"
         noun="stock record"
         countNoun="movements"
-        immutable
         columns={columns}
         fields={fields}
         lookups={['products', 'orders']}
