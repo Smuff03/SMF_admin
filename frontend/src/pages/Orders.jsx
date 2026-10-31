@@ -308,17 +308,15 @@ export default function Orders() {
         subtitle="Manage customer portal & direct orders. Live delivery date tracking verifies on-time fulfillment."
         action={
           <div className="btn-group" style={{ display: 'flex', gap: '10px' }}>
+            <Button icon="dashboard" onClick={() => navigate('/orders/analytics')}>
+              Product analytics
+            </Button>
             <Button icon="cloud" onClick={fetchPortalOrders} disabled={syncing}>
               {syncing ? 'Fetching…' : 'Fetch Customer Portal'}
             </Button>
             <Button variant="primary" icon="plus" onClick={() => setOrderModal({ order: null })}>
               Create Order & Bill
             </Button>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
           </div>
         }
       />
@@ -416,29 +414,14 @@ export default function Orders() {
                           <b>#{r.id}</b> <small className="muted">{r.source === 'Customer Portal' ? 'Portal' : 'Direct'}</small>
                           <div className="order-card-name">{customerNameOf(r)}</div>
                           {r.phone && <small className="muted">{r.phone}</small>}
-                        <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                        </div>
                         <b className="order-card-amt">{inr(r.amount)}</b>
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
                       <div className="order-card-meta">
                         <Badge>{r.type}</Badge>
                         <span className="muted">{getOrderWeight(r)}</span>
                         <span className="muted">{when(r.createdAt)}</span>
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
                       {needsRestock && (
                         <button
                           type="button"
@@ -453,26 +436,11 @@ export default function Orders() {
                         <Button variant="ghost" icon="file" onClick={() => setBillModal(r)}>Bill</Button>
                         <button className="icon-btn" onClick={() => setOrderModal({ order: r })} aria-label="Edit order"><Icon name="pencil" size={18} /></button>
                         <button className="icon-btn" onClick={() => setConfirmDelete(r)} aria-label="Delete order"><Icon name="trash" size={18} /></button>
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
+                    </div>
                   );
                 })}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             </>
           ) : (
             <EmptyState
@@ -909,11 +877,6 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
               <p className="sub" style={{ fontSize: '13px', margin: '2px 0 0' }}>
                 Stock in Kg is deducted upon dispatch or delivery. Orders can be taken in advance even if stock is low or in deficit — you can replenish it by adding a purchase.
               </p>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <Button type="button" icon="plus" onClick={addItemRow}>
               Add Product
@@ -962,18 +925,8 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                             Avail: {formatWeight(availStock)}
                           </small>
                         )}
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
+                    </div>
 
                     {items.length > 1 && (
                       <button
@@ -987,12 +940,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                         <Icon name="trash" size={18} />
                       </button>
                     )}
-                  <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                  </div>
 
                   {/* 2-col on mobile: Pack Weight & Quantity Stepper */}
                   <div className="order-builder-row-grid2">
@@ -1041,12 +989,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                           style={{ marginTop: '4px' }}
                         />
                       )}
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                    </div>
 
                     <div className="field">
                       <label style={{ fontSize: '12px' }}>Packs (Quantity)</label>
@@ -1085,24 +1028,9 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                         >
                           +
                         </button>
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                  <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* 2-col on mobile: Rate & Total Amount */}
                   <div className="order-builder-row-grid2">
@@ -1119,12 +1047,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                           updateItem(idx, 'price', isNaN(val) || val < 0 ? 0 : val);
                         }}
                       />
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                    </div>
 
                     <div className="field">
                       <label style={{ fontSize: '12px' }}>Item Total (₹)</label>
@@ -1133,30 +1056,10 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                         <small className="muted block" style={{ fontSize: '11px', fontWeight: '400', color: '#64748b' }}>
                           {formatWeightShort(it.totalWeightKg)}
                         </small>
-                      <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                  <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -1176,20 +1079,10 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
             <div>
               <span className="muted">Total Order Weight: </span>
               <b style={{ color: '#0f172a' }}>{formatWeight(totalWeightKg)}</b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ fontSize: '18px' }}>
               <span className="muted">Grand Total: </span>
               <b style={{ color: '#166534', fontSize: '22px' }}>{inr(totalAmount)}</b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           </div>
 
@@ -1210,12 +1103,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
                 }}
               >
                 ℹ️ <b>Stock Restock Reminder:</b> One or more items exceed current stock on hand. The order will be saved immediately with a recorded stock deficit, allowing you to add a purchase order afterwards to fulfill it.
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             )}
         </div>
 
@@ -1408,23 +1296,8 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                   <span style={{ fontSize: '11px', fontWeight: '700', color: '#166534', letterSpacing: '0.04em' }}>
                     Food Safety Certified
                   </span>
-                <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+                </div>
+              </div>
             </div>
 
             {/* Direct Web, Insta, Email Contact Bar */}
@@ -1457,11 +1330,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 <img src="/mail.jpg" alt="Email" className="inv-icon" />
                 <span>contactus@crunchzy.in</span>
               </a>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           </div>
 
@@ -1486,42 +1354,17 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               </span>
               <div style={{ fontSize: '20px', fontWeight: '800', color: '#064e3b' }}>
                 #{order.id}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+              </div>
             </div>
             <div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                 Date: <b>{new Date(order.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</b>
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
               <div style={{ marginTop: '5px' }}>
                 <span className="badge" style={{ background: order.type === 'Wholesale' ? '#ecfdf5' : '#eff6ff', color: order.type === 'Wholesale' ? '#047857' : '#1d4ed8', border: '1px solid currentColor', fontSize: '11px', padding: '2px 8px' }}>
                   {order.type === 'Wholesale' ? 'Wholesale Invoice' : 'Retail Invoice'}
                 </span>
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -1552,11 +1395,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               <p style={{ margin: '2px 0 0', color: '#991b1b', fontSize: '12px' }}>
                 {deficits.map((d) => `${d.name} (Deficit: ${formatWeight(d.stock)})`).join(', ')}. Create a vendor purchase order to replenish stock.
               </p>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <Button
               variant="primary"
@@ -1579,49 +1417,24 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               <small style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '700', color: '#047857', fontSize: '11px' }}>
                 Billed To (Customer Details)
               </small>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>
               {customerName}
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             {order.phone && (
               <div style={{ fontSize: '13px', color: '#334155', marginTop: '3px' }}>
                 <b>Phone:</b> {order.phone}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             )}
             {order.address && (
               <div style={{ fontSize: '12px', color: '#475569', marginTop: '3px' }}>
                 <b>Address:</b> {order.address}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             )}
             {order.email && (
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
                 <b>Email:</b> {order.email}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             )}
           </div>
 
@@ -1630,11 +1443,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               <small style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: '700', color: '#b45309', fontSize: '11px' }}>
                 Order & Delivery Details
               </small>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ fontSize: '14px', color: '#1e293b' }}>
               Expected Delivery:{' '}
@@ -1643,11 +1451,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                   ? new Date(order.deliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                   : 'Counter Sale / Instant Fulfillment'}
               </b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span className={`badge b-${deliveryInfo.tone}`}>
@@ -1659,12 +1462,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                   options={ORDER_STATUS}
                   onChange={onStatusChange}
                 />
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
               <span className="badge" style={{ background: '#f1f5f9', color: '#334155' }}>
                 Status: <b>{order.status}</b>
               </span>
@@ -1678,11 +1476,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               >
                 Edit Quantity
               </Button>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           </div>
         </div>
@@ -1755,21 +1548,11 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                         {it.productName || it.name || 'Crunchzy Snack Item'}
                       </b>
                       {it.sku && <small className="muted block" style={{ fontSize: '11px' }}>SKU: {it.sku}</small>}
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                    </div>
                     <span className="inv-mobile-item-badge">
                       {it.weightVariant || it.weight || 'Standard Pack'}
                     </span>
-                  <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                  </div>
                   <div className="inv-mobile-item-details">
                     <div>
                       <span style={{ fontWeight: '700', color: '#0f172a' }}>
@@ -1780,45 +1563,20 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                       <span className="muted block" style={{ fontSize: '11px', marginTop: '2px' }}>
                         Weight: {formatWeight(weightKg)}
                       </span>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                    </div>
                     <div style={{ textAlign: 'right' }}>
                       <span className="muted block" style={{ fontSize: '11px' }}>Total</span>
                       <b style={{ fontSize: '16px', color: '#064e3b', fontWeight: '800' }}>
                         {inr(it.amount)}
                       </b>
-                    <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                  <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-                <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+                    </div>
+                  </div>
+                </div>
               );
             })
           ) : (
             <div className="inv-mobile-item-card" style={{ textAlign: 'center', padding: '16px' }}>
               Standard order amount: <b>{inr(order.amount)}</b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           )}
         </div>
@@ -1830,37 +1588,17 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
               <div>
                 <span className="muted">Total Packs: </span>
                 <b style={{ color: '#0f172a' }}>{totalPacks} packs</b>
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
               <div>
                 <span className="muted">Total Net Weight: </span>
                 <b style={{ color: '#065f46' }}>{formatWeight(totalWeightKg)}</b>
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+              </div>
             </div>
 
             {order.note && (
               <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', color: '#854d0e' }}>
                 <b>Order Note:</b> {order.note}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
             )}
 
             <div
@@ -1883,17 +1621,7 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 <b style={{ color: '#047857' }}>✨ 100% Freshness & Quality Promise:</b>
                 <br />
                 All snacks hygienically prepared and sealed for long-lasting crunch. Store in an airtight container in a cool, dry place.
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+              </div>
             </div>
           </div>
 
@@ -1901,44 +1629,19 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', color: '#475569' }}>
               <span>Item Subtotal:</span>
               <b>{inr(order.amount)}</b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', color: '#475569' }}>
               <span>Packaging & Handling:</span>
               <b style={{ color: '#059669' }}>FREE</b>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
 
             <div className="inv-total-highlight">
               <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.9 }}>
                 Grand Total Amount
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
+              </div>
               <div style={{ fontSize: '26px', fontWeight: '900', marginTop: '2px', letterSpacing: '-0.02em' }}>
                 {inr(order.amount)}
-              <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
-            </div>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -1976,19 +1679,9 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
                 <img src="/mail.jpg" alt="" className="inv-icon" />
                 <span>contactus@crunchzy.in</span>
               </a>
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
             <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
               This is a computer-generated invoice issued by Crunchzy. Thank you for your order!
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           </div>
 
@@ -1996,11 +1689,6 @@ function BillingSlipModal({ order, onClose, onStatusChange, onEdit, onDelete }) 
             <div style={{ height: '36px' }}></div>
             <div style={{ borderTop: '1px solid #94a3b8', paddingTop: '4px', fontSize: '11px', fontWeight: '700', color: '#334155' }}>
               Authorized Signatory
-            <Link to="/orders/analytics" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary" icon="chart-bar">
-                View Order Analytics
-              </Button>
-            </Link>
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
+import OrderAnalytics from './pages/OrderAnalytics.jsx';
 import Products from './pages/Products.jsx';
 import Inventory from './pages/Inventory.jsx';
 import Purchases from './pages/Purchases.jsx';
@@ -15,6 +16,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="orders/analytics" element={<OrderAnalytics />} />
         <Route path="products" element={<Products />} />
         <Route path="inventory" element={<Inventory />} />
         <Route path="purchases" element={<Purchases />} />
