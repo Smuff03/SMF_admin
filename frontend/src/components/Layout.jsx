@@ -59,7 +59,7 @@ export default function Layout() {
       <aside className={`side ${open ? 'open' : ''}`}>
         <div className="brand">
           <span className="logo">TM</span>
-          <div><b>TMF <span>BizHub</span></b><small>Admin workspace</small></div>
+          <div><b>Crunchzy <span>BizHub</span></b><small>Admin workspace</small></div>
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="nav">
