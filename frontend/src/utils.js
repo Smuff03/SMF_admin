@@ -8,7 +8,7 @@ export const TONE = {
   Wholesale: 'green', Retail: 'blue',
   Active: 'green', Inactive: 'gray', 'On hold': 'red',
   Created: 'green', Updated: 'blue', Deleted: 'red',
-  'Stock in': 'green', 'Stock out': 'amber', Adjustment: 'blue',
+  'Stock in': 'green', 'Stock out': 'amber', Adjustment: 'blue', 'Used in Demo': 'purple',
   Critical: 'red', Low: 'amber', Healthy: 'green',
   Deficit: 'red', 'Out of stock': 'red',
 };
@@ -47,6 +47,41 @@ export function parseWeightKg(variant, customKg) {
   if (s.includes('gm') || s.includes('g')) return (num || 0) / 1000;
   if (s.includes('kg')) return num || 0;
   return Number(customKg || num || 1);
+}
+
+export function extractItemWeightKg(item) {
+  if (Number(item?.totalWeightKg) > 0) return Number(item.totalWeightKg);
+  if (Number(item?.kg) > 0) return Number(item.kg);
+  let perUnitKg = Number(item?.weightInKg);
+  if (!Number.isFinite(perUnitKg) || perUnitKg <= 0) {
+    const s = String(item?.weightVariant || item?.packSize || item?.weight || '').toLowerCase().trim();
+    if (s.includes('1/2') || s === '500 gm' || s === '500g') perUnitKg = 0.5;
+    else if (s.includes('200')) perUnitKg = 0.2;
+    else if (s.includes('250')) perUnitKg = 0.25;
+    else if (s.includes('1 kg') || s === '1kg') perUnitKg = 1.0;
+    else if (s.includes('2 kg') || s === '2kg') perUnitKg = 2.0;
+    else if (s.includes('5 kg') || s === '5kg') perUnitKg = 5.0;
+    else {
+      const num = parseFloat(s);
+      if (s.includes('gm') || s.includes('g')) perUnitKg = (num || 0) / 1000;
+      else if (s.includes('kg')) perUnitKg = num || 0;
+      else perUnitKg = 1;
+    }
+  }
+  const qty = Number(item?.quantity ?? item?.qty) || 1;
+  return Math.round((perUnitKg || 1) * qty * 1000) / 1000;
+}
+
+export function getOrderItems(order) {
+  if (Array.isArray(order?.items) && order.items.length > 0) return order.items;
+  if (Array.isArray(order?.cart) && order.cart.length > 0) return order.cart;
+  return [];
+}
+
+export function isDeductedStatus(status) {
+  if (!status) return false;
+  const s = String(status).toLowerCase().trim();
+  return s === 'dispatched' || s === 'delivered';
 }
 
 export function formatWeight(kg) {

@@ -6,7 +6,7 @@ import Icon from '../components/Icon.jsx';
 import DataTable from '../components/DataTable.jsx';
 import { Badge, Button, ConfirmModal, EmptyState, Modal, PageHeader, StatusSelect } from '../components/ui.jsx';
 import { billFileName, customerNameOf, makeBillPdf, shareBillOnWhatsApp, downloadFile } from '../billShare.js';
-import { ORDER_STATUS, WEIGHT_VARIANTS, formatWeight, formatWeightShort, getDeliveryStatus, inr, parseWeightKg, when } from '../utils.js';
+import { ORDER_STATUS, WEIGHT_VARIANTS, formatWeight, formatWeightShort, getDeliveryStatus, inr, parseWeightKg, when, isDeductedStatus } from '../utils.js';
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -95,10 +95,14 @@ export default function Orders() {
         toast(`Order #${orderModal.order.id} updated`);
       } else {
         const res = await api.create('orders', orderData);
-        if (hasDeficit) {
-          toast(`Order ${res?.id || ''} created! Stock deficit recorded — add a purchase order to restock.`);
+        if (isDeductedStatus(orderData.status)) {
+          if (hasDeficit) {
+            toast(`Order ${res?.id || ''} created (${orderData.status})! Stock deficit recorded — add a purchase order to restock.`);
+          } else {
+            toast(`Order ${res?.id || ''} created (${orderData.status}) with stock deducted`);
+          }
         } else {
-          toast(`Order ${res?.id || ''} created successfully with stock deducted`);
+          toast(`Order ${res?.id || ''} created (${orderData.status || 'Pending'}) — stock will be deducted when Dispatched/Delivered`);
         }
       }
       setOrderModal(null);
@@ -121,7 +125,8 @@ export default function Orders() {
           throw err;
         }
       }
-      toast(`Order #${order.id} deleted and stock restored`);
+      const wasDeducted = isDeductedStatus(order.status);
+      toast(`Order #${order.id} deleted${wasDeducted ? ' and stock restored' : ''}`);
       setConfirmDelete(null);
       if (billModal && billModal.id === order.id) setBillModal(null);
       if (orderModal && orderModal.order && orderModal.order.id === order.id) setOrderModal(null);
@@ -493,8 +498,8 @@ export default function Orders() {
       {confirmDelete && (
         <ConfirmModal
           title={`Delete Order #${confirmDelete.id}?`}
-          text={`This will delete order #${confirmDelete.id} for ${typeof confirmDelete.customer === 'object' && confirmDelete.customer ? (confirmDelete.customer.name || confirmDelete.customer.fullName || confirmDelete.customer.email || 'Customer') : (confirmDelete.customer || 'Customer')}. Any stock in Kg deducted by this order will be automatically restored to inventory.`}
-          confirmLabel="Delete & Restore Stock"
+          text={`This will delete order #${confirmDelete.id} for ${typeof confirmDelete.customer === 'object' && confirmDelete.customer ? (confirmDelete.customer.name || confirmDelete.customer.fullName || confirmDelete.customer.email || 'Customer') : (confirmDelete.customer || 'Customer')}.${isDeductedStatus(confirmDelete.status) ? ' Any stock in Kg deducted by this order will be automatically restored to inventory.' : ''}`}
+          confirmLabel={isDeductedStatus(confirmDelete.status) ? 'Delete & Restore Stock' : 'Delete Order'}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => removeOrder(confirmDelete)}
         />
@@ -866,7 +871,7 @@ function OrderBuilderModal({ order, products = [], customers = [], wholesalers =
             <div>
               <h2 style={{ fontSize: '18px' }}>Line Items & Pack Weights</h2>
               <p className="sub" style={{ fontSize: '13px', margin: '2px 0 0' }}>
-                Stock in Kg will be deducted automatically. Orders can be taken even if stock is 0 or unavailable — you can replenish it by adding a purchase.
+                Stock in Kg is deducted upon dispatch or delivery. Orders can be taken in advance even if stock is low or in deficit — you can replenish it by adding a purchase.
               </p>
             </div>
             <Button type="button" icon="plus" onClick={addItemRow}>

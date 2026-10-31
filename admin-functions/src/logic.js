@@ -125,6 +125,16 @@ export function getOrderItems(order) {
   return [];
 }
 
+/**
+ * Stock is physically deducted from inventory ONLY when an order is Dispatched or Delivered.
+ * Pending and Processing orders represent future deliveries and do NOT deduct stock yet.
+ */
+export function isDeductedStatus(status) {
+  if (!status) return false;
+  const s = String(status).toLowerCase().trim();
+  return s === 'dispatched' || s === 'delivered';
+}
+
 export const resources = {
   orders: {
     entity: 'Order',
@@ -154,24 +164,24 @@ export const resources = {
     async afterCreate(ctx, order) {
       const items = getOrderItems(order);
       const st = order.status || order.orderStatus;
-      if (st !== 'Cancelled' && items.length > 0) {
+      // Only deduct physical stock if the order is already Dispatched or Delivered.
+      // Received orders in Pending or Processing remain in stock until dispatched/delivered.
+      if (isDeductedStatus(st) && items.length > 0) {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;
           if (!productId) continue;
           const product = await ctx.tx.get('products', productId);
           if (product) {
-            // Stock is allowed to go negative (deficit). Orders are always accepted regardless of
-            // current stock level — the admin adds a purchase order to replenish later.
             const current = stockTracker.has(productId) ? stockTracker.get(productId) : (Number(product.stock) || 0);
             const weightKg = extractItemWeightKg(item);
-            if (weightKg <= 0) continue; // skip items with no resolvable weight
+            if (weightKg <= 0) continue;
             const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const custName = typeof order.customer === 'object' && order.customer ? (order.customer.name || order.customer.fullName || 'Customer') : (order.customer || 'Customer');
             const newStock = await moveStock(ctx, product, -weightKg, {
               type: 'Stock out',
               quantity: weightKg,
-              note: `Order ${order.id} - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})${current <= 0 ? ' [deficit order]' : ''}`
+              note: `Order ${order.id} (${st}) - ${custName} (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})${current <= 0 ? ' [deficit order]' : ''}`
             }, current);
             stockTracker.set(productId, newStock);
           }
@@ -196,43 +206,54 @@ export const resources = {
       const beforeSt = before.status || before.orderStatus;
       const afterSt = after.status || after.orderStatus;
 
-      if (beforeSt !== 'Cancelled' && afterSt === 'Cancelled') {
+      const wasDeducted = isDeductedStatus(beforeSt);
+      const isDeducted = isDeductedStatus(afterSt);
+
+      // Transition A: moved from Pending/Processing/Cancelled -> Dispatched/Delivered (Deduct physical stock)
+      if (!wasDeducted && isDeducted) {
         const stockTracker = new Map();
-        for (const item of items) {
+        for (const item of afterItems.length ? afterItems : items) {
           const productId = item.productId || item.id;
           if (!productId) continue;
           const product = await ctx.tx.get('products', productId);
           if (product) {
             const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
             const weightKg = extractItemWeightKg(item);
+            if (weightKg <= 0) continue;
+            const variantTag = item.weightVariant || item.packSize || item.weight || '';
+            const custName = typeof after.customer === 'object' && after.customer ? (after.customer.name || after.customer.fullName || 'Customer') : (after.customer || 'Customer');
+            const newStock = await moveStock(ctx, product, -weightKg, {
+              type: 'Stock out',
+              quantity: weightKg,
+              note: `Order ${after.id} ${afterSt} - Stock deducted (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
+            }, current);
+            stockTracker.set(productId, newStock);
+          }
+        }
+      }
+      // Transition B: was Dispatched/Delivered -> changed back to Pending/Processing/Cancelled (Restore physical stock)
+      else if (wasDeducted && !isDeducted) {
+        const stockTracker = new Map();
+        for (const item of beforeItems.length ? beforeItems : items) {
+          const productId = item.productId || item.id;
+          if (!productId) continue;
+          const product = await ctx.tx.get('products', productId);
+          if (product) {
+            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
+            const weightKg = extractItemWeightKg(item);
+            if (weightKg <= 0) continue;
             const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const newStock = await moveStock(ctx, product, weightKg, {
               type: 'Stock in',
               quantity: weightKg,
-              note: `Order ${after.id} Cancelled - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
+              note: `Order ${after.id} moved to ${afterSt} - Restocked (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
             }, current);
             stockTracker.set(productId, newStock);
           }
         }
-      } else if (beforeSt === 'Cancelled' && afterSt !== 'Cancelled') {
-        const stockTracker = new Map();
-        for (const item of items) {
-          const productId = item.productId || item.id;
-          if (!productId) continue;
-          const product = await ctx.tx.get('products', productId);
-          if (product) {
-            const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
-            const weightKg = extractItemWeightKg(item);
-            const variantTag = item.weightVariant || item.packSize || item.weight || '';
-            const newStock = await moveStock(ctx, product, -weightKg, {
-              type: 'Stock out',
-              quantity: weightKg,
-              note: `Order ${after.id} Reinstated - Stock deducted (${item.productName || item.name || product.name}${variantTag ? ` · ${variantTag}` : ''})`
-            }, current);
-            stockTracker.set(productId, newStock);
-          }
-        }
-      } else if (beforeSt !== 'Cancelled' && afterSt !== 'Cancelled' && after.items !== undefined) {
+      }
+      // Transition C: was Dispatched/Delivered and remains Dispatched/Delivered, but line items/quantities were edited
+      else if (wasDeducted && isDeducted && after.items !== undefined) {
         const beforeWeights = new Map();
         for (const item of beforeItems) {
           const pid = item.productId || item.id;
@@ -270,7 +291,8 @@ export const resources = {
     async afterDelete(ctx, existing) {
       const items = getOrderItems(existing);
       const st = existing.status || existing.orderStatus;
-      if (st !== 'Cancelled' && items.length > 0) {
+      // Only restore stock if this order was actually Dispatched or Delivered
+      if (isDeductedStatus(st) && items.length > 0) {
         const stockTracker = new Map();
         for (const item of items) {
           const productId = item.productId || item.id;
@@ -279,6 +301,7 @@ export const resources = {
           if (product) {
             const current = stockTracker.has(productId) ? stockTracker.get(productId) : Number(product.stock) || 0;
             const weightKg = extractItemWeightKg(item);
+            if (weightKg <= 0) continue;
             const variantTag = item.weightVariant || item.packSize || item.weight || '';
             const newStock = await moveStock(ctx, product, weightKg, {
               type: 'Stock in',
@@ -355,7 +378,7 @@ export const resources = {
     label: (r) => `${r.type} ${r.quantity} x ${r.productName}`,
     schema: {
       productId: { required: true, label: 'Product' },
-      type: { required: true, enum: ['Stock in', 'Stock out', 'Adjustment'], label: 'Type' },
+      type: { required: true, enum: ['Stock in', 'Stock out', 'Adjustment', 'Used in Demo'], label: 'Type' },
       quantity: { type: 'number', required: true, label: 'Quantity' },
       note: { label: 'Note' },
     },
@@ -364,9 +387,9 @@ export const resources = {
       if (!product) throw bad('Product not found');
       if (d.quantity === 0) throw bad('Quantity cannot be 0');
       if (d.type !== 'Adjustment' && d.quantity < 0) throw bad('Quantity must be greater than 0');
-      const delta = d.type === 'Stock out' ? -d.quantity : d.quantity;
-      // Deficit stock is allowed — orders can be taken even when stock is 0 or below.
-      // The admin resolves the deficit by adding a purchase order to restock later.
+      const isOut = d.type === 'Stock out' || d.type === 'Used in Demo';
+      const delta = isOut ? -d.quantity : d.quantity;
+      if (d.type === 'Stock out' && product.stock + delta < 0) throw bad(`Only ${product.stock} units of ${product.name} in stock`);
       ctx.tx.update('products', product.id, { stock: product.stock + delta });
       return { ...d, productName: product.name, sku: product.sku, balance: product.stock + delta, createdAt: ctx.now };
     },

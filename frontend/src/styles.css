@@ -85,7 +85,7 @@ tbody tr:hover td { background: #fcfdfd; } .end { text-align: right; width: 1%; 
 .badge, .status-select { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; width: auto; border: 0; }
 .status-select { padding: 5px 6px; cursor: pointer; }
 .b-green { background: #dcfce7; color: #15803d; } .b-blue { background: #dbeafe; color: #1d4ed8; } .b-amber { background: #fef3c7; color: #b45309; }
-.b-gray { background: #f1f5f9; color: #475569; } .b-red { background: #fee2e2; color: #b91c1c; }
+.b-gray { background: #f1f5f9; color: #475569; } .b-red { background: #fee2e2; color: #b91c1c; } .b-purple { background: #f3e8ff; color: #7e22ce; }
 .chev svg { transition: transform .15s; } .chev.on svg { transform: rotate(180deg); }
 .expand td { background: #f8fafc !important; padding: 18px 24px; }
 .expand-body { display: flex; gap: 40px; align-items: center; flex-wrap: wrap; } .expand-body b { display: block; }

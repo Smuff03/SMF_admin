@@ -9,6 +9,7 @@ export default function ResourcePage({
   resource, eyebrow, title, subtitle, addLabel, columns, fields, lookups = [], searchKeys = ['name'], placeholder = 'Search…',
   tabs, filters = [], banner, countNoun = 'records', above, expand, immutable, canEdit = () => true, noun = 'record', onBeforeSave, onRemoved,
   initialModal = null,
+  customAction = null,
 }) {
   const { data, errors, toast, setConnOpen, summary } = useApp();
   const rows = data[resource];
@@ -83,7 +84,7 @@ export default function ResourcePage({
   return (
     <>
       <PageHeader eyebrow={eyebrow} title={title} subtitle={subtitle}
-        action={addLabel && !error && <Button variant="primary" icon="plus" onClick={() => setModal({ row: null })}>{addLabel}</Button>} />
+        action={customAction ? (typeof customAction === 'function' ? customAction(ctx) : customAction) : (addLabel && !error && <Button variant="primary" icon="plus" onClick={() => setModal({ row: null })}>{addLabel}</Button>)} />
 
       {note && bannerOn && (
         <div className="banner">

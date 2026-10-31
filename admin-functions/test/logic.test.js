@@ -68,13 +68,15 @@ test('inventory moves stock, records balance and rejects overdrawing', async () 
   assert.equal(s.col('products')[id].stock, 25);
   await s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Adjustment', quantity: -5 } });
   assert.equal(s.col('products')[id].stock, 20);
-  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock out', quantity: 21 } }), /Only 20 units/);
+  await s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Used in Demo', quantity: 2, note: 'Customer tasting demo' } });
+  assert.equal(s.col('products')[id].stock, 18);
+  await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock out', quantity: 19 } }), /Only 18 units/);
   await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock in', quantity: -1 } }), /greater than 0/);
   await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: id, type: 'Stock in', quantity: 0 } }), /cannot be 0/);
   await assert.rejects(s.run({ resource: 'inventory', action: 'create', data: { productId: 'ghost', type: 'Stock in', quantity: 1 } }), /Product not found/);
-  assert.equal(s.col('products')[id].stock, 20);
+  assert.equal(s.col('products')[id].stock, 18);
   const bal = Object.values(s.col('inventory')).map((m) => m.balance).sort((a, b) => b - a);
-  assert.deepEqual(bal, [40, 25, 20]);
+  assert.deepEqual(bal, [40, 25, 20, 18]);
   await assert.rejects(s.run({ resource: 'inventory', action: 'update', id: Object.keys(s.col('inventory'))[0], data: {} }), /cannot be edited/);
   await assert.rejects(s.run({ resource: 'inventory', action: 'delete', id: Object.keys(s.col('inventory'))[0] }), /cannot be deleted/);
 });
@@ -182,7 +184,7 @@ test('product images reject foreign urls, odd paths and too many files', async (
   await assert.rejects(s.run(product({ images: Array.from({ length: 7 }, (_, i) => ({ url: URL1, path: `products/${i}.jpg` })) })), Fail);
 });
 
-test('enterprise stock: purchase received increases kg, order items decrease kg, cancel/delete restores kg', async () => {
+test('enterprise stock: purchase received increases kg, dispatched/delivered orders decrease kg, cancel/delete restores kg', async () => {
   const s = store();
   // 1. Product added with no initial stock (defaults to 0)
   const { id: p1 } = await s.run({ resource: 'products', action: 'create', data: { name: 'Chivda Special', category: 'Chivda' } });
@@ -192,7 +194,7 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   await s.run({ resource: 'purchases', action: 'create', data: { supplier: 'Spice Vendor', productId: p1, quantity: 50, unitCost: 120, status: 'Received' } });
   assert.equal(s.col('products')[p1].stock, 50);
 
-  // 3. Retail Order with line items (2 packs of 500 gm = 1 kg, and 1 pack of 200 gm = 0.2 kg)
+  // 3. Retail Order created as Pending (default) with line items: does NOT deduct physical stock yet!
   const { id: o1 } = await s.run({
     resource: 'orders', action: 'create', data: {
       customer: 'Suresh Kumar', type: 'Retail', amount: 450,
@@ -202,20 +204,26 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
       ]
     }
   });
-  // 50 kg - (1.0 kg + 0.2 kg) = 48.8 kg
+  // Pending order: Stock is still 50 kg! (Delivered and Dispatched deduct from quantity; rest all stay as is)
+  assert.equal(s.col('products')[p1].stock, 50);
+  let outMoves = Object.values(s.col('inventory')).filter((m) => m.type === 'Stock out');
+  assert.equal(outMoves.length, 0);
+
+  // 4. Update order to Dispatched -> Deducts stock now: 50 kg - (1.0 kg + 0.2 kg) = 48.8 kg
+  await s.run({ resource: 'orders', action: 'update', id: o1, data: { status: 'Dispatched' } });
   assert.equal(s.col('products')[p1].stock, 48.8);
-  const outMoves = Object.values(s.col('inventory')).filter((m) => m.type === 'Stock out');
+  outMoves = Object.values(s.col('inventory')).filter((m) => m.type === 'Stock out');
   assert.equal(outMoves.length, 2);
 
-  // 4. Cancel order -> Restores 1.2 kg back to 50 kg
+  // 5. Cancel order -> Restores 1.2 kg back to 50 kg
   await s.run({ resource: 'orders', action: 'update', id: o1, data: { status: 'Cancelled' } });
   assert.equal(s.col('products')[p1].stock, 50);
 
-  // 5. Reinstate order -> Re-deducts 1.2 kg back to 48.8 kg
-  await s.run({ resource: 'orders', action: 'update', id: o1, data: { status: 'Processing' } });
+  // 6. Move back to Delivered -> Deducts 1.2 kg back to 48.8 kg
+  await s.run({ resource: 'orders', action: 'update', id: o1, data: { status: 'Delivered' } });
   assert.equal(s.col('products')[p1].stock, 48.8);
 
-  // 5b. Update item quantity: change 500 gm packs from 2 (1.0 kg) to 4 (2.0 kg), amount adjusts accordingly
+  // 7. Update item quantity while Delivered: change 500 gm packs from 2 (1.0 kg) to 4 (2.0 kg)
   // Stock decreases by another 1.0 kg (48.8 kg - 1.0 kg = 47.8 kg)
   await s.run({
     resource: 'orders', action: 'update', id: o1, data: {
@@ -230,20 +238,20 @@ test('enterprise stock: purchase received increases kg, order items decrease kg,
   assert.equal(s.col('orders')[o1].amount, 750);
   assert.equal(s.col('orders')[o1].items[0].quantity, 4);
 
-  // 6. Delete order -> Restores full updated 2.2 kg back to 50 kg
+  // 8. Delete delivered order -> Restores full updated 2.2 kg back to 50 kg
   await s.run({ resource: 'orders', action: 'delete', id: o1 });
   assert.equal(s.col('products')[p1].stock, 50);
 
-  // 7. Customer portal order via storefrontOrders with cart and object customer
+  // 9. Customer portal order via storefrontOrders with cart that was Dispatched
   s.col('storefrontOrders')['portal-999'] = {
     id: 'portal-999',
     customer: { name: 'Portal Customer', email: 'portal@crunchzy.in' },
     type: 'Retail',
     amount: 300,
-    status: 'Pending',
+    status: 'Dispatched',
     cart: [{ id: p1, name: 'Chivda Special', weight: '500 gm', quantity: 2 }] // 2 * 0.5 kg = 1.0 kg
   };
-  // Delete storefrontOrders -> Restores 1.0 kg (50 kg + 1.0 kg = 51 kg)
+  // Delete Dispatched storefrontOrders -> Restores 1.0 kg (50 kg + 1.0 kg = 51 kg)
   await s.run({ resource: 'storefrontOrders', action: 'delete', id: 'portal-999' });
   assert.equal(s.col('products')[p1].stock, 51);
   assert.equal(s.col('storefrontOrders')['portal-999'], undefined);
@@ -272,10 +280,10 @@ test('order can be taken even when product is not in stock (0 stock or deficit),
   const { id: pid } = await s.run({ resource: 'products', action: 'create', data: { name: 'Bhajani Chakli', category: 'Bhajani Chakli', stock: 0 } });
   assert.equal(s.col('products')[pid].stock, 0);
 
-  // 2. Take an order for 2 packs of 500 gm = 1.0 kg and 1 pack of 1 kg = 1.0 kg (total 2 kg)
+  // 2. Take an order for 2 packs of 500 gm = 1.0 kg and 1 pack of 1 kg = 1.0 kg (total 2 kg), marked Dispatched
   const { id: oid } = await s.run({
     resource: 'orders', action: 'create', data: {
-      customer: 'Rajesh Sharma', type: 'Retail', amount: 600,
+      customer: 'Rajesh Sharma', type: 'Retail', amount: 600, status: 'Dispatched',
       items: [
         { productId: pid, productName: 'Bhajani Chakli', weightVariant: '500 gm', weightInKg: 0.5, quantity: 2, totalWeightKg: 1.0, price: 150, amount: 300 },
         { productId: pid, productName: 'Bhajani Chakli', weightVariant: '1 kg', weightInKg: 1.0, quantity: 1, totalWeightKg: 1.0, price: 300, amount: 300 },
