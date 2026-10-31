@@ -18,8 +18,10 @@ import {
   isDeductedStatus,
   parseWeightKg,
 } from '../utils.js';
+import './inventory.css';
 
 const signed = (r) => (r.type === 'Stock out' || r.type === 'Used in Demo' ? -Number(r.quantity || 0) : Number(r.quantity || 0));
+const round3 = (n) => Math.round(n * 1000) / 1000;
 
 const columns = [
   { label: 'Product', render: (r) => <div className="cell"><Tile>{initial(r.productName)}</Tile><div><b>{r.productName}</b><small className="muted">{r.sku}</small></div></div> },
@@ -38,10 +40,9 @@ const fields = ({ products = [] }) => [
 ];
 
 /**
- * Enterprise Stock & Demo Adjustment Modal
- * Gives the user 2 straightforward ways to record demo usage and update current inventory:
- * 1. "Used in Demo / Tasting": Enter exact packets or kg used for customer sampling -> deducts from stock.
- * 2. "Set Exact Current Stock": Enter actual current stock counted in warehouse -> calculates difference & updates balance.
+ * Stock & Demo Adjustment Modal
+ * 1. "Used in demo": enter packs or kg used for tasting/sampling -> deducts from stock.
+ * 2. "Set exact stock": enter the counted warehouse stock -> the difference is calculated and logged.
  */
 function StockAdjustmentModal({ product, products = [], onClose, onSaved }) {
   const [activeTab, setActiveTab] = useState('demo'); // 'demo' | 'current'
@@ -156,13 +157,16 @@ function StockAdjustmentModal({ product, products = [], onClose, onSaved }) {
     }
   };
 
+  const diffExact = round3((Number(exactCurrentStock) || 0) - currentStockKg);
+  const afterDemo = round3(currentStockKg - demoWeightKg);
+
   return (
-    <Modal title="Record Demo Usage & Update Stock" onClose={onClose} width={580}>
-      <div style={{ marginBottom: '16px' }}>
-        {/* Product selector */}
-        <div className="field" style={{ marginBottom: '14px' }}>
-          <label style={{ fontWeight: 600 }}>Select Product <span className="req">*</span></label>
+    <Modal title="Record demo usage & update stock" onClose={onClose} width={580}>
+      <div className="inv inv-modal">
+        <div className="field">
+          <label htmlFor="inv-pid">Product <span className="req">*</span></label>
           <select
+            id="inv-pid"
             value={selectedPid}
             onChange={(e) => {
               setSelectedPid(e.target.value);
@@ -171,247 +175,119 @@ function StockAdjustmentModal({ product, products = [], onClose, onSaved }) {
             }}
           >
             {products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} (Current: {formatWeight(p.stock)})
-              </option>
+              <option key={p.id} value={p.id}>{p.name} (Current: {formatWeight(p.stock)})</option>
             ))}
           </select>
         </div>
 
-        {/* Tab selection */}
-        <div className="tabs" style={{ marginBottom: '16px' }}>
-          <button
-            type="button"
-            className={`tab ${activeTab === 'demo' ? 'on' : ''}`}
-            onClick={() => setActiveTab('demo')}
-          >
-            🍪 Used in Demo / Tasting
+        <div className="inv-seg" role="tablist">
+          <button type="button" role="tab" aria-selected={activeTab === 'demo'} className={activeTab === 'demo' ? 'on' : ''} onClick={() => setActiveTab('demo')}>
+            Used in demo
           </button>
           <button
-            type="button"
-            className={`tab ${activeTab === 'current' ? 'on' : ''}`}
-            onClick={() => {
-              setActiveTab('current');
-              setExactCurrentStock(currentStockKg);
-            }}
+            type="button" role="tab" aria-selected={activeTab === 'current'} className={activeTab === 'current' ? 'on' : ''}
+            onClick={() => { setActiveTab('current'); setExactCurrentStock(currentStockKg); }}
           >
-            ⚖️ Set Exact Current Stock
+            Set exact stock
           </button>
         </div>
 
-        {error && <div className="form-error mb">{error}</div>}
+        {error && <div className="form-error" role="alert">{error}</div>}
 
-        {/* TAB 1: Used in Demo / Customer Tasting */}
         {activeTab === 'demo' && (
           <form onSubmit={handleSaveDemo}>
-            <p className="sub" style={{ fontSize: '13px', margin: '0 0 14px' }}>
-              Deduct stock used for customer tasting samples, showroom demos, or promotional testing.
-            </p>
+            <p className="sub inv-note">Deduct stock used for customer tasting samples, showroom demos or promotional testing.</p>
 
-            {/* Quick pack size picker */}
-            <div className="field" style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600 }}>Pack Size Used</label>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+            <div className="field">
+              <label>Pack size used</label>
+              <div className="inv-pills">
                 {['100 gm', '200 gm', '250 gm', '500 gm', '1 kg', 'Custom'].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={`tab ${demoPackVariant === v ? 'on' : ''}`}
-                    onClick={() => setDemoPackVariant(v)}
-                    style={{ padding: '4px 10px', fontSize: '12px' }}
-                  >
-                    {v}
-                  </button>
+                  <button key={v} type="button" className={`inv-pill ${demoPackVariant === v ? 'on' : ''}`} onClick={() => setDemoPackVariant(v)}>{v}</button>
                 ))}
               </div>
             </div>
 
             {demoPackVariant === 'Custom' ? (
-              <div className="field" style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Demo Weight (in Kg) <span className="req">*</span></label>
-                <input
-                  type="number"
-                  step="0.05"
-                  min="0.01"
-                  placeholder="e.g. 0.75"
-                  value={demoCustomKg}
-                  onChange={(e) => setDemoCustomKg(e.target.value)}
-                  required
-                />
+              <div className="field">
+                <label htmlFor="inv-custom">Demo weight (Kg) <span className="req">*</span></label>
+                <input id="inv-custom" type="number" inputMode="decimal" step="0.05" min="0.01" placeholder="e.g. 0.75" value={demoCustomKg} onChange={(e) => setDemoCustomKg(e.target.value)} required />
               </div>
             ) : (
-              <div className="field" style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Number of Packs Used</label>
-                <div className="qty-stepper" style={{ maxWidth: '160px' }}>
-                  <button
-                    type="button"
-                    className="qty-step-btn"
-                    onClick={() => setDemoPacksCount((c) => Math.max(1, c - 1))}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min="1"
-                    value={demoPacksCount}
-                    onChange={(e) => setDemoPacksCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                  />
-                  <button
-                    type="button"
-                    className="qty-step-btn"
-                    onClick={() => setDemoPacksCount((c) => c + 1)}
-                  >
-                    +
-                  </button>
+              <div className="field">
+                <label>Number of packs used</label>
+                <div className="qty-stepper inv-stepper">
+                  <button type="button" className="qty-step-btn" aria-label="Fewer packs" onClick={() => setDemoPacksCount((c) => Math.max(1, c - 1))}>−</button>
+                  <input className="qty-step-input" type="number" inputMode="numeric" min="1" value={demoPacksCount} onChange={(e) => setDemoPacksCount(Math.max(1, parseInt(e.target.value, 10) || 1))} aria-label="Number of packs" />
+                  <button type="button" className="qty-step-btn" aria-label="More packs" onClick={() => setDemoPacksCount((c) => c + 1)}>+</button>
                 </div>
               </div>
             )}
 
-            {/* Reference note */}
-            <div className="field" style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600 }}>Customer / Event Reference Note</label>
-              <input
-                type="text"
-                value={demoNote}
-                onChange={(e) => setDemoNote(e.target.value)}
-                placeholder="e.g. Customer tasting demo for Ramesh, exhibition samples…"
-              />
+            <div className="field">
+              <label htmlFor="inv-demo-note">Customer / event note</label>
+              <input id="inv-demo-note" type="text" value={demoNote} onChange={(e) => setDemoNote(e.target.value)} placeholder="e.g. Tasting for Ramesh, exhibition samples…" />
             </div>
 
-            {/* Live calculation banner */}
-            <div
-              style={{
-                background: '#faf5ff',
-                border: '1px solid #e9d5ff',
-                borderRadius: '8px',
-                padding: '12px 16px',
-                marginBottom: '16px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                fontSize: '13px',
-              }}
-            >
-              <div>
-                <span className="muted" style={{ display: 'block', fontSize: '11px' }}>Current Stock</span>
-                <b>{formatWeight(currentStockKg)}</b>
-              </div>
-              <div style={{ color: '#7e22ce', fontWeight: 700, fontSize: '14px' }}>
-                − {formatWeight(demoWeightKg)} (Demo)
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span className="muted" style={{ display: 'block', fontSize: '11px' }}>New Warehouse Stock</span>
-                <b style={{ color: currentStockKg - demoWeightKg < 0 ? '#dc2626' : '#15803d', fontSize: '15px' }}>
-                  {formatWeight(Math.round((currentStockKg - demoWeightKg) * 1000) / 1000)}
-                </b>
-              </div>
+            <div className="inv-calc demo">
+              <div><span>Current stock</span><b>{formatWeight(currentStockKg)}</b></div>
+              <div className="mid"><span>Demo use</span><b>− {formatWeight(demoWeightKg)}</b></div>
+              <div className="end"><span>New stock</span><b className={afterDemo < 0 ? 'neg' : 'pos'}>{formatWeight(afterDemo)}</b></div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <div className="modal-f">
               <Button type="button" onClick={onClose} disabled={saving}>Cancel</Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={saving || demoWeightKg <= 0}
-                style={{ background: '#7e22ce', borderColor: '#7e22ce', color: '#fff' }}
-              >
-                {saving ? 'Deducting…' : `Deduct ${formatWeight(demoWeightKg)} Demo Stock`}
+              <Button type="submit" variant="demo" disabled={saving || demoWeightKg <= 0}>
+                {saving ? 'Deducting…' : `Deduct ${formatWeight(demoWeightKg)}`}
               </Button>
             </div>
           </form>
         )}
 
-        {/* TAB 2: Set Exact Current Stock */}
         {activeTab === 'current' && (
           <form onSubmit={handleSaveExactStock}>
-            <p className="sub" style={{ fontSize: '13px', margin: '0 0 14px' }}>
-              Directly enter the physical stock counted in your warehouse. The difference will be automatically calculated and logged.
-            </p>
+            <p className="sub inv-note">Enter the stock you counted in the warehouse. The difference is calculated and logged for you.</p>
 
-            <div className="form-grid mb">
+            <div className="form-grid">
               <div className="field">
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Current System Stock</label>
-                <div style={{ fontSize: '15px', fontWeight: 700, padding: '8px 0' }}>
-                  {formatWeight(currentStockKg)}
-                </div>
+                <label>Current system stock</label>
+                <div className="inv-readout">{formatWeight(currentStockKg)}</div>
               </div>
-
               <div className="field">
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Actual Current Stock Now (in Kg) <span className="req">*</span></label>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={exactCurrentStock}
-                  onChange={(e) => setExactCurrentStock(e.target.value)}
-                  placeholder="Enter counted stock in Kg"
-                  required
-                />
+                <label htmlFor="inv-exact">Actual stock now (Kg) <span className="req">*</span></label>
+                <input id="inv-exact" type="number" inputMode="decimal" step="0.05" value={exactCurrentStock} onChange={(e) => setExactCurrentStock(e.target.value)} placeholder="Counted stock in Kg" required />
               </div>
             </div>
 
-            <div className="field" style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600 }}>Reason for Stock Difference</label>
-              <select
-                value={adjustReason}
-                onChange={(e) => setAdjustReason(e.target.value)}
-              >
-                <option value="Used in Demo / Customer Tasting">🍪 Used in Demo / Customer Tasting</option>
-                <option value="Physical Stock Audit Reconciliation">📋 Physical Stock Audit Count</option>
-                <option value="Damage / Spillage / Expired">⚠️ Damage / Spillage / Waste</option>
-                <option value="Surplus Found / Recount">✓ Surplus Found in Warehouse</option>
-                <option value="Other Adjustment">Other Adjustment</option>
+            <div className="field">
+              <label htmlFor="inv-reason">Reason for difference</label>
+              <select id="inv-reason" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)}>
+                <option value="Used in Demo / Customer Tasting">Used in demo / customer tasting</option>
+                <option value="Physical Stock Audit Reconciliation">Physical stock audit count</option>
+                <option value="Damage / Spillage / Expired">Damage / spillage / waste</option>
+                <option value="Surplus Found / Recount">Surplus found in warehouse</option>
+                <option value="Other Adjustment">Other adjustment</option>
               </select>
             </div>
 
-            <div className="field" style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600 }}>Audit Reference Note</label>
-              <input
-                type="text"
-                value={adjustNote}
-                onChange={(e) => setAdjustNote(e.target.value)}
-                placeholder="e.g. Reconciliation after tasting samples at trade show…"
-              />
+            <div className="field">
+              <label htmlFor="inv-adj-note">Audit reference note</label>
+              <input id="inv-adj-note" type="text" value={adjustNote} onChange={(e) => setAdjustNote(e.target.value)} placeholder="e.g. Reconciliation after tasting at trade show…" />
             </div>
 
-            {/* Calculated difference preview */}
-            {(() => {
-              const diff = Math.round((Number(exactCurrentStock) - currentStockKg) * 1000) / 1000;
-              return (
-                <div
-                  style={{
-                    background: diff < 0 ? '#fef2f2' : diff > 0 ? '#f0fdf4' : '#f8fafc',
-                    border: `1px solid ${diff < 0 ? '#fecaca' : diff > 0 ? '#bbf7d0' : '#e2e8f0'}`,
-                    borderRadius: '8px',
-                    padding: '12px 16px',
-                    marginBottom: '16px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    fontSize: '13px',
-                  }}
-                >
-                  <div>
-                    <span className="muted" style={{ display: 'block', fontSize: '11px' }}>Adjustment</span>
-                    <b style={{ color: diff < 0 ? '#dc2626' : diff > 0 ? '#15803d' : '#64748b' }}>
-                      {diff > 0 ? `+${formatWeight(diff)}` : diff < 0 ? `-${formatWeight(Math.abs(diff))}` : '0 kg change'}
-                    </b>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span className="muted" style={{ display: 'block', fontSize: '11px' }}>New Warehouse Stock</span>
-                    <b style={{ fontSize: '15px' }}>{formatWeight(Number(exactCurrentStock) || 0)}</b>
-                  </div>
-                </div>
-              );
-            })()}
+            <div className={`inv-calc ${diffExact < 0 ? 'down' : diffExact > 0 ? 'up' : ''}`}>
+              <div>
+                <span>Adjustment</span>
+                <b className={diffExact < 0 ? 'neg' : diffExact > 0 ? 'pos' : 'muted'}>
+                  {diffExact > 0 ? `+${formatWeight(diffExact)}` : diffExact < 0 ? `−${formatWeight(Math.abs(diffExact))}` : 'No change'}
+                </b>
+              </div>
+              <div className="end"><span>New stock</span><b>{formatWeight(Number(exactCurrentStock) || 0)}</b></div>
+            </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <div className="modal-f">
               <Button type="button" onClick={onClose} disabled={saving}>Cancel</Button>
-              <Button
-                type="submit"
-                variant="primary"
-                disabled={saving || Number(exactCurrentStock) === currentStockKg}
-              >
-                {saving ? 'Updating…' : `Update Stock to ${formatWeight(Number(exactCurrentStock) || 0)}`}
+              <Button type="submit" variant="primary" disabled={saving || Number(exactCurrentStock) === currentStockKg}>
+                {saving ? 'Updating…' : `Update stock to ${formatWeight(Number(exactCurrentStock) || 0)}`}
               </Button>
             </div>
           </form>
@@ -421,12 +297,128 @@ function StockAdjustmentModal({ product, products = [], onClose, onSaved }) {
   );
 }
 
+/* ---------- small shared pieces (used by both the desktop table and the mobile cards) ---------- */
+
+function statusOf(p) {
+  if (p.hasShortage) {
+    return p.deficitKg > 0
+      ? { tone: 'red', label: `Short ${formatWeight(p.deficitKg)}` }
+      : { tone: 'amber', label: 'Restock soon' };
+  }
+  if (p.hasPendingOrders) return { tone: 'green', label: 'Ready to deliver' };
+  if (p.stockOnHand <= 0) return { tone: 'gray', label: 'No stock, no orders' };
+  return { tone: 'gray', label: 'Sufficient' };
+}
+
+const stockTone = (kg) => (kg < 0 ? 'neg' : kg === 0 ? 'warn' : '');
+
+function ProductCell({ p }) {
+  return (
+    <div className="cell inv-prod">
+      <Tile>{initial(p.name)}</Tile>
+      <div>
+        <b>{p.name}</b>
+        <small className="muted">{[p.sku, p.category].filter(Boolean).join(' · ')}</small>
+      </div>
+    </div>
+  );
+}
+
+function UsedBreakdown({ p }) {
+  const parts = [
+    p.dispatchedKg > 0 && { key: 'disp', label: 'dispatched', kg: p.dispatchedKg },
+    p.deliveredKg > 0 && { key: 'del', label: 'delivered', kg: p.deliveredKg },
+    p.demoUsedKg > 0 && { key: 'demo', label: 'demo', kg: p.demoUsedKg },
+  ].filter(Boolean);
+  if (!p.totalUsedKg) return <span className="muted">—</span>;
+  return (
+    <div>
+      <b>{formatWeight(p.totalUsedKg)}</b>
+      <div className="inv-split">
+        {parts.map((x) => <span key={x.key} className={`inv-split-${x.key}`}>{formatWeightShort(x.kg)} {x.label}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function NeededCell({ p }) {
+  if (!p.futureOrderCount) return <span className="muted">—</span>;
+  return (
+    <div>
+      <b className="inv-blue">{formatWeight(p.neededForFutureDeliveryKg)}</b>
+      <small className="muted block">{p.futureOrderCount} {p.futureOrderCount === 1 ? 'order' : 'orders'}</small>
+    </div>
+  );
+}
+
+function BalanceCell({ p }) {
+  const neg = p.projectedBalanceKg < 0;
+  return (
+    <div>
+      <b className={neg ? 'neg' : 'pos'}>{neg ? '−' : '+'}{formatWeight(Math.abs(p.projectedBalanceKg))}</b>
+      <small className="muted block">{neg ? 'Shortfall to restock' : 'Available surplus'}</small>
+    </div>
+  );
+}
+
+function DueCell({ p }) {
+  if (!p.earliestDeliveryDate) return <span className="muted">—</span>;
+  const d = p.earliestDeliveryOrder ? getDeliveryStatus(p.earliestDeliveryOrder) : null;
+  return (
+    <div>
+      <b>{new Date(p.earliestDeliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</b>
+      {d && <span className={`badge b-${d.tone} inv-mini`}>{d.label}</span>}
+    </div>
+  );
+}
+
+function RowActions({ p, expanded, onToggle, onBuy, onAdjust }) {
+  return (
+    <div className="inv-actions">
+      {p.deficitKg > 0 && (
+        <Button variant="danger" onClick={onBuy} title={`Create a purchase order for ${formatWeight(p.deficitKg)} of ${p.name}`}>
+          Buy {formatWeightShort(p.deficitKg)}
+        </Button>
+      )}
+      <Button variant="ghost" onClick={onAdjust} title="Record demo usage or update physical stock">Demo / stock</Button>
+      {p.futureOrderCount > 0 && (
+        <Button variant="ghost" onClick={onToggle} aria-expanded={expanded}>
+          Orders ({p.futureOrderCount})
+          <span className={`chev ${expanded ? 'on' : ''}`}><Icon name="chevron" size={16} /></span>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function FutureOrders({ p }) {
+  return (
+    <div className="inv-orders">
+      <div className="inv-orders-h">Open orders needing {p.name}</div>
+      {p.futureOrdersList.map((o) => {
+        const due = o.deliveryDate ? new Date(o.deliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'No date';
+        const packs = o.lines.map((l) => `${l.qty} × ${l.variant}`).join(', ');
+        return (
+          <div key={o.orderId} className="inv-order">
+            <div className="inv-order-who">
+              <b>{o.customer}</b>
+              <small className="muted">#{String(o.orderId).slice(-6)}{o.source ? ` · ${o.source}` : ''}</small>
+            </div>
+            <div className="inv-order-packs muted">{packs}</div>
+            <b className="inv-blue">{formatWeight(o.weightKg)}</b>
+            <span className="inv-order-meta"><Badge>{o.status}</Badge><span className="muted">Due {due}</span></span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * Enterprise Inventory & Fulfillment Dashboard
- * Calculates:
- * 1. Physical Stock on Hand remaining after Dispatched, Delivered & Demo deductions.
- * 2. Required stock needed for future deliveries of open orders received (Pending & Processing).
- * 3. Net projected balance & exact restock shortfall needed to fulfill incoming customer orders.
+ * Inventory & fulfillment dashboard
+ * 1. Physical stock on hand after Dispatched, Delivered & Demo deductions.
+ * 2. Stock needed for open orders (Pending & Processing).
+ * 3. Projected balance and the exact restock shortfall.
  */
 function Overview({ rows, look, threshold, onOpenDemoModal }) {
   const navigate = useNavigate();
@@ -434,9 +426,9 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
   const products = look.products || data.products || [];
   const orders = data.orders || [];
 
-  const [tabFilter, setTabFilter] = useState('All'); // 'All' | 'Shortage' | 'Pending' | 'Covered'
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedProduct, setExpandedProduct] = useState(null);
+  const [tabFilter, setTabFilter] = useState('All');
 
   // Compute live fulfillment & stock analytics
   const analytics = useMemo(() => {
@@ -611,507 +603,270 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
     totalStockOnHandKg,
     totalNeededFutureKg,
     totalDeficitKg,
-    totalFulfilledKg,
     totalDispatchedKg,
     totalDeliveredKg,
     totalDemoUsedKg,
     totalUsedProductsKg,
     futureOrdersCount,
-    fulfilledOrdersCount,
     shortageCount,
   } = analytics;
 
-  // Filtered rows for the Future Delivery & Stock Balance Table
+  const pendingCount = useMemo(() => productStats.filter((p) => p.hasPendingOrders).length, [productStats]);
+  const coveredCount = useMemo(() => productStats.filter((p) => p.isCovered && !p.hasShortage).length, [productStats]);
+
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return productStats.filter((p) => {
       if (tabFilter === 'Shortage' && !p.hasShortage) return false;
       if (tabFilter === 'Pending' && !p.hasPendingOrders) return false;
       if (tabFilter === 'Covered' && (p.hasShortage || (!p.hasPendingOrders && p.stockOnHand <= 0))) return false;
-      if (q) {
-        const hay = `${p.name} ${p.sku} ${p.category}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
+      if (q && !`${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [productStats, tabFilter, searchQuery]);
 
-  // Low stock products for replenishment health progress bars
   const lowStockProducts = products.filter((p) => p.active && p.stock <= threshold).sort((a, b) => a.stock - b.stock);
 
+  const buy = (p) => navigate(`/purchases?productId=${p.id}&quantity=${p.deficitKg}&notes=${encodeURIComponent(`Restock for future delivery of ${p.name}`)}`);
+  const toggle = (id) => setExpandedProduct((cur) => (cur === id ? null : id));
+
+  const chips = [
+    ['All', 'All products', productStats.length, ''],
+    ['Shortage', 'Needs restock', shortageCount, shortageCount > 0 ? 'alert' : ''],
+    ['Pending', 'Future orders', pendingCount, ''],
+    ['Covered', 'Stock sufficient', coveredCount, ''],
+  ];
+
   return (
-    <>
-      {/* Top 4 KPI Metrics */}
-      <div className="kpis">
+    <div className="inv">
+      {/* KPI strip */}
+      <div className="kpis inv-kpis">
         <div className="card kpi stack">
-          <span className="muted">Stock on Hand (Warehouse)</span>
-          <b className="kv" style={{ color: totalStockOnHandKg < 0 ? '#dc2626' : 'var(--text)' }}>
-            {formatWeight(totalStockOnHandKg)}
-          </b>
-          <small className="muted">Remaining from Dispatched, Delivered & Demo</small>
+          <span className="muted">Stock on hand</span>
+          <b className={`kv ${totalStockOnHandKg < 0 ? 'neg' : ''}`}>{formatWeight(totalStockOnHandKg)}</b>
+          <small className="muted">After dispatched, delivered &amp; demo</small>
         </div>
 
         <div className="card kpi stack">
-          <span className="muted">Needed for Future Delivery</span>
-          <b className="kv" style={{ color: totalNeededFutureKg > 0 ? '#2563eb' : 'var(--text)' }}>
-            {formatWeight(totalNeededFutureKg)}
-          </b>
-          <small className="muted">{futureOrdersCount} received orders awaiting fulfillment</small>
+          <span className="muted">Needed for delivery</span>
+          <b className={`kv ${totalNeededFutureKg > 0 ? 'inv-blue' : ''}`}>{formatWeight(totalNeededFutureKg)}</b>
+          <small className="muted">{futureOrdersCount} open {futureOrdersCount === 1 ? 'order' : 'orders'}</small>
         </div>
 
         <div className="card kpi stack">
-          <span className="muted">Stock Shortfall for Orders</span>
+          <span className="muted">Stock shortfall</span>
           {totalDeficitKg > 0 ? (
             <>
-              <b className="kv neg">
-                -{formatWeight(totalDeficitKg)}
-              </b>
-              <small className="neg" style={{ fontWeight: 600 }}>
-                ⚠️ Needs restock for {shortageCount} {shortageCount === 1 ? 'item' : 'items'}
-              </small>
+              <b className="kv neg">−{formatWeight(totalDeficitKg)}</b>
+              <small className="neg">Restock {shortageCount} {shortageCount === 1 ? 'item' : 'items'}</small>
             </>
           ) : (
             <>
-              <b className="kv pos">
-                ✓ Fully Covered
-              </b>
-              <small className="pos">
-                +{formatWeight(Math.max(0, totalStockOnHandKg - totalNeededFutureKg))} surplus available
-              </small>
+              <b className="kv pos">Covered</b>
+              <small className="pos">+{formatWeight(Math.max(0, totalStockOnHandKg - totalNeededFutureKg))} surplus</small>
             </>
           )}
         </div>
 
         <div className="card kpi stack">
-          <span className="muted">Total Products Used</span>
-          <b className="kv" style={{ color: '#059669' }}>
-            {formatWeight(totalUsedProductsKg)}
-          </b>
+          <span className="muted">Total used</span>
+          <b className="kv">{formatWeight(totalUsedProductsKg)}</b>
           <small className="muted">
-            {formatWeight(totalDispatchedKg)} dispatched · {formatWeight(totalDeliveredKg)} delivered · {formatWeight(totalDemoUsedKg)} demo
-          </small>
-          <small className="muted" style={{ fontSize: '10px', marginTop: '2px' }}>
-            Only Dispatched, Delivered & Demo count as used
+            {formatWeightShort(totalDispatchedKg)} dispatched · {formatWeightShort(totalDeliveredKg)} delivered · {formatWeightShort(totalDemoUsedKg)} demo
           </small>
         </div>
       </div>
 
-      {/* Stock Deficit Action Alert (Visible when future delivery orders exceed current warehouse stock) */}
+      {/* Shortfall alert */}
       {totalDeficitKg > 0 && (
-        <div
-          className="card pad mb"
-          style={{
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '24px' }}>⚠️</span>
-            <div>
-              <b style={{ color: '#991b1b', fontSize: '15px' }}>
-                Stock Shortfall Alert: {formatWeight(totalDeficitKg)} needed for future deliveries
-              </b>
-              <p style={{ margin: '2px 0 0', color: '#b91c1c', fontSize: '13px' }}>
-                You have received customer orders requiring more inventory than currently available on hand. Restock to ensure on-time delivery.
-              </p>
-            </div>
+        <div className="inv-alert" role="alert">
+          <div className="inv-alert-text">
+            <b>{formatWeight(totalDeficitKg)} short for open orders</b>
+            <p>Customer orders need more stock than you have on hand. Restock to deliver on time.</p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Button
-              variant="primary"
-              icon="plus"
-              onClick={() => {
-                const firstShort = productStats.find((p) => p.hasShortage);
-                if (firstShort) {
-                  navigate(`/purchases?productId=${firstShort.id}&quantity=${firstShort.deficitKg}&notes=Restock for Order Deliveries`);
-                } else {
-                  navigate('/purchases');
-                }
-              }}
-              style={{ background: '#dc2626', borderColor: '#dc2626', color: '#fff' }}
-            >
-              Restock via Purchase Order
-            </Button>
-          </div>
+          <Button
+            variant="danger"
+            icon="plus"
+            onClick={() => {
+              const first = productStats.find((p) => p.deficitKg > 0);
+              if (first) buy(first); else navigate('/purchases');
+            }}
+          >
+            Restock via purchase order
+          </Button>
         </div>
       )}
 
-      {/* Future Delivery & Inventory Requirements Table Dashboard */}
-      <section className="card pad mb" style={{ padding: '24px' }}>
-        <div className="card-h flat" style={{ flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+      {/* Future delivery & stock requirements */}
+      <section className="card inv-panel">
+        <div className="inv-panel-h">
           <div>
-            <h2 style={{ fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>📦</span> Future Delivery & Stock Requirements
-            </h2>
-            <p className="sub" style={{ margin: '4px 0 0', fontSize: '13px' }}>
-              Compares remaining warehouse stock with future delivery demands from received orders. Shows exact stock needed to fulfill deliveries.
-            </p>
+            <h2>Future delivery &amp; stock requirements</h2>
+            <p className="sub">Remaining warehouse stock compared with what open orders still need.</p>
           </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <Button
-              variant="ghost"
-              icon="sliders"
-              onClick={() => onOpenDemoModal?.(null)}
-              style={{ fontSize: '13px', color: '#7e22ce', borderColor: '#d8b4fe' }}
-            >
-              Record Demo / Adjust Stock
-            </Button>
-            <Link className="link" to="/purchases" style={{ fontSize: '14px', fontWeight: 600 }}>
-              Plan purchase orders <Icon name="arrow" size={16} />
-            </Link>
+          <div className="inv-panel-actions">
+            <Button variant="demo" icon="sliders" onClick={() => onOpenDemoModal?.(null)}>Record demo / adjust stock</Button>
+            <Link className="link" to="/purchases">Plan purchase orders <Icon name="arrow" size={16} /></Link>
           </div>
         </div>
 
-        {/* Dashboard Filter Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-          <div className="tabs" style={{ margin: 0 }}>
-            <button
-              type="button"
-              className={`tab ${tabFilter === 'All' ? 'on' : ''}`}
-              onClick={() => setTabFilter('All')}
-            >
-              All Products <span>{productStats.length}</span>
-            </button>
-            <button
-              type="button"
-              className={`tab ${tabFilter === 'Shortage' ? 'on' : ''}`}
-              onClick={() => setTabFilter('Shortage')}
-              style={shortageCount > 0 ? { color: tabFilter === 'Shortage' ? '#fff' : '#dc2626' } : undefined}
-            >
-              ⚠️ Needs Restock <span>{shortageCount}</span>
-            </button>
-            <button
-              type="button"
-              className={`tab ${tabFilter === 'Pending' ? 'on' : ''}`}
-              onClick={() => setTabFilter('Pending')}
-            >
-              📦 Future Orders <span>{productStats.filter((p) => p.hasPendingOrders).length}</span>
-            </button>
-            <button
-              type="button"
-              className={`tab ${tabFilter === 'Covered' ? 'on' : ''}`}
-              onClick={() => setTabFilter('Covered')}
-            >
-              ✓ Stock Sufficient <span>{productStats.filter((p) => p.isCovered && !p.hasShortage).length}</span>
-            </button>
+        <div className="inv-filterbar">
+          <div className="inv-chips" role="tablist" aria-label="Filter products">
+            {chips.map(([key, label, count, tone]) => (
+              <button key={key} type="button" role="tab" aria-selected={tabFilter === key} className={`inv-chip ${tabFilter === key ? 'on' : ''} ${tone}`} onClick={() => setTabFilter(key)}>
+                {label} <span>{count}</span>
+              </button>
+            ))}
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <label className="search" style={{ minWidth: '220px', margin: 0 }}>
+          <div className="inv-find">
+            <label className="search">
               <Icon name="search" size={18} />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products in inventory…"
-                style={{ fontSize: '13px' }}
-              />
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search products…" aria-label="Search products in inventory" />
             </label>
-            <span className="count-label" style={{ margin: 0 }}>
-              {filteredProducts.length} {filteredProducts.length === 1 ? 'item' : 'items'}
-            </span>
+            <span className="count-label">{filteredProducts.length} {filteredProducts.length === 1 ? 'item' : 'items'}</span>
           </div>
         </div>
 
-        {/* Table View */}
-        <div className="tw" style={{ border: '1px solid var(--line)', borderRadius: '10px', overflow: 'hidden' }}>
-          <table>
-            <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ width: '220px' }}>Product</th>
-                <th>Stock on Hand</th>
-                <th>Used Quantity</th>
-                <th>Needed for Future Delivery</th>
-                <th>Projected Net Balance</th>
-                <th>Shortfall (Kg)</th>
-                <th>Fulfillment Status</th>
-                <th>Earliest Due Date</th>
-                <th className="end" style={{ width: '200px' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '32px', color: '#64748b' }}>
-                    No products match the selected filter.
-                  </td>
-                </tr>
-              ) : (
-                filteredProducts.map((p) => {
-                  const isExpanded = expandedProduct === p.id;
-                  const dStatus = p.earliestDeliveryOrder ? getDeliveryStatus(p.earliestDeliveryOrder) : null;
+        {filteredProducts.length === 0 && (
+          <div className="inv-none">No products match this filter.</div>
+        )}
 
-                  return (
-                    <tr
-                      key={p.id}
-                      style={{
-                        background: p.hasShortage ? '#fffdfd' : undefined,
-                      }}
-                    >
-                      {/* 1. Product Name & Category */}
-                      <td>
-                        <div className="cell">
-                          <Tile>{initial(p.name)}</Tile>
-                          <div>
-                            <b>{p.name}</b>
-                            <small className="muted block">
-                              {p.sku} · {p.category}
-                            </small>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* 2. Stock on Hand (Remaining from dispatched & delivered & demo) */}
-                      <td>
-                        <div>
-                          <b
-                            style={{
-                              fontSize: '14px',
-                              color: p.stockOnHand < 0 ? '#dc2626' : p.stockOnHand === 0 ? '#d97706' : 'var(--text)',
-                            }}
-                          >
-                            {formatWeight(p.stockOnHand)}
-                          </b>
-                          <small className="muted block" style={{ fontSize: '11px', marginTop: '2px' }}>
-                            Physical in warehouse
-                          </small>
-                        </div>
-                      </td>
-
-                      {/* 3. Used Quantity (Dispatched + Delivered + Demo ONLY) */}
-                      <td>
-                        {p.totalUsedKg > 0 ? (
-                          <div>
-                            <b style={{ color: '#059669', fontSize: '14px' }}>
-                              {formatWeight(p.totalUsedKg)}
-                            </b>
-                            <small className="muted block" style={{ fontSize: '10px', marginTop: '2px', lineHeight: '1.3' }}>
-                              {p.dispatchedKg > 0 && <span>{formatWeightShort(p.dispatchedKg)} disp</span>}
-                              {p.dispatchedKg > 0 && (p.deliveredKg > 0 || p.demoUsedKg > 0) && ' · '}
-                              {p.deliveredKg > 0 && <span>{formatWeightShort(p.deliveredKg)} del</span>}
-                              {p.deliveredKg > 0 && p.demoUsedKg > 0 && ' · '}
-                              {p.demoUsedKg > 0 && <span style={{ color: '#7e22ce' }}>{formatWeightShort(p.demoUsedKg)} demo</span>}
-                            </small>
-                          </div>
-                        ) : (
-                          <span className="muted" style={{ fontSize: '13px' }}>—</span>
+        {/* Desktop / wide tablet: table */}
+        {filteredProducts.length > 0 && (
+          <div className="inv-table-card">
+            <div className="inv-table-scroll">
+              <table className="inv-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>On hand</th>
+                    <th>Used</th>
+                    <th>Needed</th>
+                    <th>Net balance</th>
+                    <th>Status</th>
+                    <th>Due</th>
+                    <th className="end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProducts.map((p) => {
+                    const st = statusOf(p);
+                    const open = expandedProduct === p.id;
+                    return (
+                      <FragmentRow key={p.id}>
+                        <tr className={p.hasShortage ? 'is-short' : ''}>
+                          <td><ProductCell p={p} /></td>
+                          <td>
+                            <b className={stockTone(p.stockOnHand)}>{formatWeight(p.stockOnHand)}</b>
+                            <small className="muted block">In warehouse</small>
+                          </td>
+                          <td><UsedBreakdown p={p} /></td>
+                          <td><NeededCell p={p} /></td>
+                          <td><BalanceCell p={p} /></td>
+                          <td><Badge tone={st.tone}>{st.label}</Badge></td>
+                          <td><DueCell p={p} /></td>
+                          <td className="end">
+                            <RowActions p={p} expanded={open} onToggle={() => toggle(p.id)} onBuy={() => buy(p)} onAdjust={() => onOpenDemoModal?.(p.product)} />
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr className="inv-expand">
+                            <td colSpan={8}><FutureOrders p={p} /></td>
+                          </tr>
                         )}
-                      </td>
+                      </FragmentRow>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
-                      {/* 4. Needed for Future Delivery */}
-                      <td>
-                        {p.futureOrderCount > 0 ? (
-                          <div>
-                            <b style={{ color: '#2563eb', fontSize: '14px' }}>
-                              {formatWeight(p.neededForFutureDeliveryKg)}
-                            </b>
-                            <small
-                              className="badge b-blue"
-                              style={{
-                                display: 'inline-block',
-                                fontSize: '11px',
-                                padding: '1px 6px',
-                                marginLeft: '6px',
-                              }}
-                            >
-                              {p.futureOrderCount} {p.futureOrderCount === 1 ? 'order' : 'orders'}
-                            </small>
-                          </div>
-                        ) : (
-                          <span className="muted" style={{ fontSize: '13px' }}>—</span>
-                        )}
-                      </td>
+        {/* Phones / small tablets: cards */}
+        {filteredProducts.length > 0 && (
+          <div className="inv-cards">
+            {filteredProducts.map((p) => {
+              const st = statusOf(p);
+              const open = expandedProduct === p.id;
+              return (
+                <article key={p.id} className={`inv-card ${p.hasShortage ? 'is-short' : ''}`}>
+                  <ProductCell p={p} />
 
-                      {/* 5. Projected Net Balance */}
-                      <td>
-                        {p.projectedBalanceKg < 0 ? (
-                          <b className="neg" style={{ fontSize: '14px' }}>
-                            -{formatWeight(Math.abs(p.projectedBalanceKg))}
-                          </b>
-                        ) : (
-                          <b className="pos" style={{ fontSize: '14px' }}>
-                            +{formatWeight(p.projectedBalanceKg)}
-                          </b>
-                        )}
-                        <small className="muted block" style={{ fontSize: '11px', marginTop: '2px' }}>
-                          {p.projectedBalanceKg < 0 ? 'Shortfall to restock' : 'Available surplus'}
-                        </small>
-                      </td>
+                  <div className="inv-card-status">
+                    <Badge tone={st.tone}>{st.label}</Badge>
+                    {p.earliestDeliveryDate && <DueCell p={p} />}
+                  </div>
 
-                      {/* 6. Fulfillment Status */}
-                      <td>
-                        {p.hasShortage ? (
-                          <span
-                            className="badge b-red"
-                            style={{
-                              fontSize: '12px',
-                              padding: '4px 8px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            ⚠️ Shortage: Need {formatWeight(p.deficitKg)}
-                          </span>
-                        ) : p.hasPendingOrders ? (
-                          <span
-                            className="badge b-green"
-                            style={{
-                              fontSize: '12px',
-                              padding: '4px 8px',
-                            }}
-                          >
-                            ✓ Ready to Deliver
-                          </span>
-                        ) : p.stockOnHand <= 0 ? (
-                          <span
-                            className="badge b-gray"
-                            style={{
-                              fontSize: '12px',
-                              padding: '4px 8px',
-                            }}
-                          >
-                            0 Stock (No orders)
-                          </span>
-                        ) : (
-                          <span
-                            className="badge b-gray"
-                            style={{
-                              fontSize: '12px',
-                              padding: '4px 8px',
-                            }}
-                          >
-                            Sufficient
-                          </span>
-                        )}
-                      </td>
+                  <div className="inv-metrics">
+                    <div className="inv-metric">
+                      <span>On hand</span>
+                      <b className={stockTone(p.stockOnHand)}>{formatWeight(p.stockOnHand)}</b>
+                    </div>
+                    <div className="inv-metric">
+                      <span>Used</span>
+                      <UsedBreakdown p={p} />
+                    </div>
+                    <div className="inv-metric">
+                      <span>Needed</span>
+                      <NeededCell p={p} />
+                    </div>
+                    <div className="inv-metric">
+                      <span>Net balance</span>
+                      <BalanceCell p={p} />
+                    </div>
+                  </div>
 
-                      {/* 7. Earliest Due Date */}
-                      <td>
-                        {p.earliestDeliveryDate ? (
-                          <div>
-                            <b>
-                              {new Date(p.earliestDeliveryDate).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                              })}
-                            </b>
-                            {dStatus && (
-                              <span
-                                className={`badge b-${dStatus.tone}`}
-                                style={{
-                                  display: 'block',
-                                  width: 'fit-content',
-                                  fontSize: '11px',
-                                  padding: '1px 6px',
-                                  marginTop: '2px',
-                                }}
-                              >
-                                {dStatus.label}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="muted" style={{ fontSize: '13px' }}>—</span>
-                        )}
-                      </td>
-
-                      {/* 8. Action */}
-                      <td className="end">
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-                          {p.hasShortage && (
-                            <Button
-                              variant="primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/purchases?productId=${p.id}&quantity=${p.deficitKg}&notes=Restock for future delivery of ${p.name}`);
-                              }}
-                              style={{
-                                fontSize: '11px',
-                                padding: '3px 8px',
-                                background: '#dc2626',
-                                borderColor: '#dc2626',
-                                color: '#fff',
-                              }}
-                              title={`Create Purchase Order to buy ${formatWeight(p.deficitKg)} of ${p.name}`}
-                            >
-                              + Buy {formatWeightShort(p.deficitKg)}
-                            </Button>
-                          )}
-
-                          <Button
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenDemoModal?.(p.product);
-                            }}
-                            style={{ fontSize: '11px', padding: '3px 7px', color: '#7e22ce' }}
-                            title="Record demo usage or update physical stock"
-                          >
-                            Demo / Stock
-                          </Button>
-
-                          {p.futureOrderCount > 0 && (
-                            <Button
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedProduct(isExpanded ? null : p.id);
-                              }}
-                              style={{ fontSize: '11px', padding: '3px 6px' }}
-                            >
-                              {isExpanded ? '▲' : `(${p.futureOrderCount}) ▼`}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  <RowActions p={p} expanded={open} onToggle={() => toggle(p.id)} onBuy={() => buy(p)} onAdjust={() => onOpenDemoModal?.(p.product)} />
+                  {open && <FutureOrders p={p} />}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
-      {/* Low Stock Replenishment Health Section */}
-      <section className="card pad mb">
-        <div className="card-h flat">
+      {/* Replenishment health */}
+      <section className="card inv-panel">
+        <div className="inv-panel-h">
           <div>
-            <h2>Replenishment Health</h2>
-            <p className="sub">Active snack items at or below low-stock threshold ({threshold} kg)</p>
+            <h2>Replenishment health</h2>
+            <p className="sub">Active products at or below the low-stock level of {threshold} kg.</p>
           </div>
           <Link className="link" to="/purchases">Plan purchase order <Icon name="arrow" size={16} /></Link>
         </div>
         {lowStockProducts.length ? (
-          <div className="health">
+          <div className="inv-health">
             {lowStockProducts.slice(0, 6).map((p) => (
-              <div key={p.id} className="health-row">
-                <Tile>{initial(p.name)}</Tile>
-                <div className="grow">
-                  <b>{p.name}</b>
-                  <small className="muted">{p.category}</small>
+              <div key={p.id} className="inv-health-row">
+                <div className="cell inv-health-who">
+                  <Tile>{initial(p.name)}</Tile>
+                  <div><b>{p.name}</b><small className="muted">{p.category}</small></div>
                 </div>
-                <div className="bar">
-                  <i style={{ width: `${Math.max(0, Math.min(100, (p.stock / 50) * 100))}%`, background: p.stock < 0 ? '#dc2626' : undefined }} />
-                </div>
-                <span className={p.stock < 0 ? 'neg' : 'low'}>
-                  {p.stock < 0 ? `${formatWeight(p.stock)} (Deficit)` : `${formatWeight(p.stock)} left`}
+                <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, (p.stock / Math.max(threshold, 1)) * 100))}%`, background: p.stock < 0 ? '#dc2626' : undefined }} /></div>
+                <span className={p.stock < 0 ? 'neg inv-health-qty' : 'low inv-health-qty'}>
+                  {p.stock < 0 ? `${formatWeight(p.stock)} deficit` : `${formatWeight(p.stock)} left`}
                 </span>
                 <Badge>{stockLevel(p.stock, threshold)}</Badge>
               </div>
             ))}
           </div>
         ) : (
-          <p className="sub">All active products are above the low-stock threshold.</p>
+          <p className="sub">All active products are above the low-stock level.</p>
         )}
       </section>
-    </>
+
+      <div className="inv-log-h">
+        <h2>Stock movements</h2>
+        <p className="sub">Every stock in, stock out, demo and adjustment, newest first.</p>
+      </div>
+    </div>
   );
+}
+
+// Lets a table row and its expanded detail row share one key.
+function FragmentRow({ children }) {
+  return <>{children}</>;
 }
 
 export default function Inventory() {
@@ -1125,7 +880,7 @@ export default function Inventory() {
         resource="inventory"
         eyebrow="WORKSPACE / INVENTORY"
         title="Inventory"
-        subtitle="Detailed stock balances, demo usage tracking, future delivery demands, and transactional movements."
+        subtitle="Stock balances, demo usage, future delivery demand and every stock movement."
         addLabel="Add movement"
         noun="stock record"
         countNoun="movements"
@@ -1135,30 +890,12 @@ export default function Inventory() {
         searchKeys={['productName', 'sku', 'note']}
         placeholder="Search stock movements…"
         customAction={(ctx) => (
-          <div className="btn-group" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <Button
-              variant="primary"
-              icon="sliders"
-              onClick={() => setDemoModal({ product: null })}
-              style={{ background: '#7e22ce', borderColor: '#7e22ce', color: '#fff' }}
-            >
-              Record Demo / Update Stock
-            </Button>
-            <Button
-              variant="ghost"
-              icon="plus"
-              onClick={() => ctx.openCreate()}
-            >
-              Add Movement
-            </Button>
+          <div className="btn-group">
+            <Button variant="demo" icon="sliders" onClick={() => setDemoModal({ product: null })}>Record demo / update stock</Button>
+            <Button variant="primary" icon="plus" onClick={() => ctx.createWith({})}>Add movement</Button>
           </div>
         )}
-        above={(p) => (
-          <Overview
-            {...p}
-            onOpenDemoModal={(prod) => setDemoModal({ product: prod })}
-          />
-        )}
+        above={(p) => <Overview {...p} onOpenDemoModal={(prod) => setDemoModal({ product: prod })} />}
         filters={[
           {
             key: 'type',
@@ -1169,7 +906,6 @@ export default function Inventory() {
         ]}
       />
 
-      {/* Interactive Stock & Demo Adjustment Modal */}
       {demoModal && (
         <StockAdjustmentModal
           product={demoModal.product}
