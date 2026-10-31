@@ -18,6 +18,32 @@ const time = (r) => new Date(r.createdAt || 0).getTime();
 const newest = (rows) => [...rows].sort((a, b) => time(b) - time(a));
 const sumBy = (rows, fn) => rows.reduce((a, r) => a + fn(r), 0);
 
+const GENERIC_NAMES = new Set(['direct customer', 'portal customer', 'customer']);
+
+/**
+ * Saved customers plus every retail buyer who only exists on an order. Those extra rows are marked `derived`
+ * (read-only in the UI) so names are always picked up from orders, even if nobody added the customer by hand.
+ */
+function customersWithOrderBuyers(saved, raw, orders) {
+  if (!saved) return saved;
+  const known = new Set([...(raw.customers || []), ...(raw.wholesalers || [])].map((r) => String(r.name || '').toLowerCase().trim()));
+  const found = new Map();
+  for (const o of orders || []) {
+    if (o.status === 'Cancelled' || o.type === 'Wholesale') continue;
+    const name = typeof o.customer === 'string' ? o.customer.trim() : '';
+    const key = name.toLowerCase();
+    if (!name || GENERIC_NAMES.has(key) || known.has(key)) continue;
+    const row = found.get(key) || { id: `from-orders:${key}`, name, phone: '', email: '', city: '', createdAt: o.createdAt, derived: true, orders: 0, totalSpent: 0 };
+    row.orders += 1;
+    row.totalSpent += o.amount;
+    row.phone = row.phone || o.phone || '';
+    row.email = row.email || o.email || '';
+    if (time(o) > time(row)) row.createdAt = o.createdAt;
+    found.set(key, row);
+  }
+  return newest([...saved, ...found.values()]);
+}
+
 export function AppProvider({ children }) {
   const [raw, setRaw] = useState({});
   const [errors, setErrors] = useState({});
@@ -45,7 +71,7 @@ export function AppProvider({ children }) {
               setRaw((r) => ({ ...r, [name]: rows }));
               setErrors((e) => { const { [name]: _gone, ...rest } = e; return rest; });
             }
-          }).catch(() => {});
+          }).catch(() => { });
         }
       );
     });
@@ -68,6 +94,11 @@ export function AppProvider({ children }) {
         || o.userName
         || userObj.name || userObj.fullName
         || shipObj.fullName || shipObj.name
+        || o.customerInfo?.name || o.customerInfo?.fullName
+        || o.buyerName || o.buyer?.name
+        || o.billingAddress?.fullName || o.billingAddress?.name
+        || o.deliveryAddress?.fullName || o.deliveryAddress?.name
+        || o.fullName || o.displayName || o.name
         || custObj.email || userObj.email || o.email
         || (isPortal ? 'Portal Customer' : 'Direct Customer');
 
@@ -125,7 +156,7 @@ export function AppProvider({ children }) {
         const mine = (purchases || []).filter((p) => p.supplier === r.name && p.status !== 'Cancelled');
         return { ...r, purchases: mine.length, totalPurchased: sumBy(mine, (p) => p.amount) };
       }),
-      customers: withOrders(raw.customers),
+      customers: customersWithOrderBuyers(withOrders(raw.customers), raw, orders),
       wholesalers: withOrders(raw.wholesalers),
       'audit-logs': raw['audit-logs'] ?? null,
     };

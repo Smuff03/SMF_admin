@@ -1,5 +1,5 @@
 import ResourcePage from './ResourcePage.jsx';
-import { Badge, Muted, Tile } from '../components/ui.jsx';
+import { Badge, Button, Muted, Tile } from '../components/ui.jsx';
 import { initial, inr } from '../utils.js';
 
 const who = (r, sub) => <div className="cell"><Tile>{initial(r.name)}</Tile><div><b>{r.name}</b><small className="muted">{sub}</small></div></div>;
@@ -29,9 +29,9 @@ export function Suppliers() {
 export function Customers() {
   return (
     <ResourcePage resource="customers" eyebrow="WORKSPACE / CUSTOMERS" title="Customers" subtitle="Retail customers and their order history."
-      addLabel="Add customer" noun="customer" countNoun="customers" searchKeys={['name', 'phone', 'email', 'city']} placeholder="Search customers…"
+      addLabel="Add customer" noun="customer" countNoun="customers" canEdit={(r) => !r.derived} searchKeys={['name', 'phone', 'email', 'city']} placeholder="Search customers…"
       columns={[
-        { label: 'Customer', render: (r) => who(r, r.email || 'No email') },
+        { label: 'Customer', render: (r) => who(r, r.email || (r.derived ? 'From orders' : 'No email')) },
         { label: 'Phone', render: (r) => or(r.phone) },
         { label: 'City', render: (r) => or(r.city) },
         { label: 'Orders', key: 'orders' },
@@ -89,10 +89,12 @@ export function Wholesalers() {
         { label: 'Business', render: (r) => who(r, r.city || 'No city') },
         { label: 'Contact', render: (r) => <div><b className="plain">{or(r.contact)}</b><small className="muted block">{r.phone}</small></div> },
         { label: 'GSTIN', render: (r) => or(r.gstin) },
-        { label: 'Credit used', render: (r) => {
-          const used = r.creditLimit ? Math.min(100, (r.outstanding / r.creditLimit) * 100) : 0;
-          return <div className="credit"><b className={used > 80 ? 'low' : 'plain'}>{inr(r.outstanding)}</b><small className="muted block">of {inr(r.creditLimit)}</small><div className="bar"><i style={{ width: `${used}%`, background: used > 80 ? '#dc2626' : '#22c55e' }} /></div></div>;
-        } },
+        {
+          label: 'Credit used', render: (r) => {
+            const used = r.creditLimit ? Math.min(100, (r.outstanding / r.creditLimit) * 100) : 0;
+            return <div className="credit"><b className={used > 80 ? 'low' : 'plain'}>{inr(r.outstanding)}</b><small className="muted block">of {inr(r.creditLimit)}</small><div className="bar"><i style={{ width: `${used}%`, background: used > 80 ? '#dc2626' : '#22c55e' }} /></div></div>;
+          }
+        },
         { label: 'Orders', key: 'orders' },
         { label: 'Status', render: (r) => <Badge>{r.status}</Badge> },
       ]}
