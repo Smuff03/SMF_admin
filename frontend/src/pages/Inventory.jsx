@@ -537,6 +537,9 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
       // Total Used = Dispatched + Delivered + Demo (only these 3 statuses count as used)
       const totalUsedKg = Math.round((dispatchedKg + deliveredKg + demoUsedKg) * 1000) / 1000;
 
+      // Shortfall from used (dispatched+delivered) exceeding current stock
+      const shortfallFromUsedKg = Math.max(0, totalUsedKg - stockOnHand);
+      const hasShortage = deficitKg > 0 || shortfallFromUsedKg > 0;
       return {
         product: p,
         id: p.id,
@@ -557,7 +560,8 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
         fulfilledKg,
         demoUsedKg,
         totalUsedKg,
-        hasShortage: deficitKg > 0,
+        shortfallFromUsedKg,
+        hasShortage,
         hasPendingOrders: neededForFutureDeliveryKg > 0,
         isCovered: projectedBalanceKg >= 0 && (neededForFutureDeliveryKg > 0 || stockOnHand > 0),
       };
@@ -825,6 +829,7 @@ function Overview({ rows, look, threshold, onOpenDemoModal }) {
                 <th>Used Quantity</th>
                 <th>Needed for Future Delivery</th>
                 <th>Projected Net Balance</th>
+                <th>Shortfall (Kg)</th>
                 <th>Fulfillment Status</th>
                 <th>Earliest Due Date</th>
                 <th className="end" style={{ width: '200px' }}>Action</th>
